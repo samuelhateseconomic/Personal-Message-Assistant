@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug: imsg chat",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "imsg_agent",
+      "args": ["chat"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Debug: imsg daemon",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "imsg_agent",
+      "args": ["daemon", "start", "--foreground"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug: imsg send",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "imsg_agent",
+      "args": ["send", "+15550109999", "Test message"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug: pytest",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests/", "-v"],
+      "console": "integratedTerminal"
+    }
+  ]
+}

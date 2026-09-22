@@ -1,0 +1,16 @@
+{
+  "ollama_model": "gemma3:12b",
+  "ollama_host": "http://localhost:11434",
+  "data_dir": "~/.imsg-agent",
+  "max_retries": 3,
+  "guardrails": {
+    "blackout_hours": { "start": 22, "end": 7 },
+    "max_messages_per_hour": 20,
+    "max_messages_per_contact_per_hour": 5,
+    "max_batch_size": 10,
+    "max_message_length": 2000,
+    "require_confirmation": true,
+    "dry_run_mode": false,
+    "duplicate_window_minutes": 60
+  }
+}
