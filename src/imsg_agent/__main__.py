@@ -2,6 +2,7 @@
 
 Delegates to the Typer CLI app defined in cli.py.
 """
+
 from imsg_agent.cli import app
 
 

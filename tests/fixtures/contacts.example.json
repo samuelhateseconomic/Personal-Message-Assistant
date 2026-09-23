@@ -1,0 +1,41 @@
+{
+  "contacts": [
+    {
+      "name": "Mom",
+      "phone": "+15550109999",
+      "aliases": ["Mother", "Ma"],
+      "service": "iMessage",
+      "group": ["family"],
+      "timezone": "America/New_York",
+      "metadata": {
+        "birthday": "1965-03-14",
+        "relationship": "mother",
+        "notes": "Prefers short, warm messages. Loves emojis."
+      },
+      "templates": {
+        "morning": "Good morning, Mom! Hope you have a wonderful day ☀️💕",
+        "birthday": "Happy Birthday, Mom! 🎂🎉 Love you so much! ❤️",
+        "medication": "Hey Mom, just a friendly reminder to take your meds! 💊😊"
+      },
+      "blackout_hours": {
+        "start": 22,
+        "end": 7
+      }
+    },
+    {
+      "name": "John Chen",
+      "phone": "+15550108888",
+      "aliases": ["John"],
+      "group": ["work", "engineering"],
+      "timezone": "America/Los_Angeles",
+      "metadata": {
+        "relationship": "colleague",
+        "notes": "Direct communication style. Keep it professional."
+      },
+      "templates": {
+        "standup": "Hey John, standup in 5 minutes! 🏃",
+        "review": "Hi John, PR is ready for review when you get a chance."
+      }
+    }
+  ]
+}

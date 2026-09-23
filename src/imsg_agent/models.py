@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 PHONE_PATTERN = r"^\+[1-9]\d{7,14}$"
-ScheduleStatus = Literal["pending", "sent", "failed", "cancelled"]
+ScheduleStatus = Literal["pending", "sending", "sent", "failed", "cancelled"]
 
 
 def utc_now() -> datetime:
@@ -27,6 +27,7 @@ class BlackoutHours(Model):
 
 
 class Contact(Model):
+    id: str | None = Field(default=None, pattern=r"^contact-[a-zA-Z0-9-]+$")
     name: str = Field(min_length=1)
     phone: str = Field(pattern=PHONE_PATTERN)
     aliases: list[str] = Field(default_factory=list)
@@ -122,6 +123,8 @@ class ScheduledMessage(ScheduleMessageArgs):
     status: ScheduleStatus = "pending"
     service: Literal["iMessage", "SMS"] = "iMessage"
     timezone: str = "America/Los_Angeles"
+    delivery_approved: bool = False
+    blackout_hours: BlackoutHours | None = None
     attempts: int = Field(default=0, ge=0)
     last_error: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
@@ -182,7 +185,25 @@ class SendResult(Model):
     service: Literal["iMessage", "SMS"]
 
 
+class GetPreferencesArgs(Model):
+    contact: str | None = None
+    overrides: dict[str, str] = Field(default_factory=dict)
+
+
+class RememberPreferenceArgs(Model):
+    contact: str | None = None
+    key: Literal["language", "tone", "length", "emoji", "formality"]
+    value: str = Field(min_length=1, max_length=40)
+
+
+class ForgetPreferenceArgs(Model):
+    id: str = Field(pattern=r"^pref-[a-f0-9]+$")
+
+
 TOOL_ARG_MODELS = {
+    "get_preferences": GetPreferencesArgs,
+    "remember_preference": RememberPreferenceArgs,
+    "forget_preference": ForgetPreferenceArgs,
     "send_message_now": SendMessageArgs,
     "schedule_message": ScheduleMessageArgs,
     "cancel_scheduled": CancelScheduledArgs,

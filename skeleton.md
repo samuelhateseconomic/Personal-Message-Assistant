@@ -1,24 +1,63 @@
 # 🦴 Project Skeleton — iMessage Scheduler Agent
 
-This document maps every file in the project, its purpose, and its build phase.
+This document maps the current project, its implemented behavior, and the remaining build phases.
 
-## Implementation status — September 21, 2026
+Phase 3 publication includes the previously uncommitted Phase 2 implementation and approved memory.
+Validation: 130 automated tests, Ruff lint/format checks, and diff checks passed. Live Ollama,
+Messages delivery, and installed launchd operation remain unverified.
 
-- Phase 1: models, config, logger, store, contacts manager, and messaging bridge implemented.
-  Automated tests cover temporary storage and mocked sending; live macOS delivery is unverified.
-- Phase 2: not implemented. Add a minimal `chat` CLI command here to satisfy its checkpoint.
-- Phase 3: `config`, `contacts`, and the CLI entry point now work; scheduling, sending from
-  the CLI, daemon management, and plist installation remain unimplemented.
-- Phase 4: contact/store tests and shared fixtures implemented; `test_foundation.py` adds
-  model, config, CLI, logger, and mocked messaging checks. Other test modules are placeholders.
-- Contact reload is explicit, with no file watcher. Messaging supports explicit iMessage/SMS
-  selection; automatic fallback after an uncertain submission is intentionally deferred.
-- Additional files: `.gitignore`, `uv.lock`, and `tests/test_foundation.py`.
+## Implementation status — Phase 3 + approved memory
 
-Next milestone: Phase 2 tool validation, guardrails, registry/handlers, Ollama integration,
-and the bounded agent loop. Tests are added alongside implementation rather than deferred
-until Phase 4. Scheduled execution will need atomic claims and explicit crash-recovery
-semantics before multiple workers can safely deliver messages.
+- Phase 1: implemented and tested. Live macOS message delivery remains unverified.
+- Phase 2: implemented: structured JSON Ollama adapter, prompt builder, validator,
+  six-pattern fallback parser, bounded agent loop, nine active tools (including three memory tools), nine guardrails,
+  exact-plan confirmations, and a `chat` CLI command. Reply/history tools retain schemas
+  but are not exposed to the model until their Phase 4 implementations exist.
+- Phase 3: implemented: direct send/schedule/list/cancel CLI, persistent claims, cron
+  scheduling, safe retries, overdue handling, delivery-time checks, crash recovery,
+  singleton foreground daemon, heartbeat, notifications, and launchd management.
+  Daemon/launchd/sending tests are mocked; live integration remains unverified.
+- Phase 4: foundation, agent, scheduler, daemon, and CLI tests implemented. Message
+  history reading and smart replies remain unimplemented.
+- Approved memory: `memory/models.py`, `repository.py`, `service.py`, and `cli.py`
+  implement approved preferences, opt-in draft feedback, conflict confirmations,
+  management commands, and local SQLite persistence. Chat tools retrieve/save/forget
+  preferences. `tests/test_memory.py` evaluates this behavior with synthetic data.
+- Personal contacts have persistent IDs for memory scope. Legacy contacts without IDs
+  use phone-derived IDs and reject shared identities. New memory tables are created
+  lazily when a memory service is initialized; existing delivery tables are preserved.
+- Preference precedence: current explicit request, contact-specific, then global.
+  Feedback proposals are not active until separately approved. The initial proposal
+  heuristic detects substantially shorter rewrites only. No model retraining, passive
+  Messages-history analysis, or automatic changes to guardrails are implemented.
+- Contact evidence retrieval returns structured stored fields and source pointers with
+  clarification for ambiguous identity. Document RAG and generated-citation verification
+  are not implemented.
+- Personal `contacts.json` and import reports are local/ignored; `contacts.example.json`
+  is the tracked sample. Tests use `tests/fixtures/contacts.example.json`.
+
+Implementation decisions: interactive mutations require confirmation, including cancellation;
+scheduled delivery uses the approval recorded when the schedule was created;
+dry runs preview all mutations. A mutation attempt ends the agent turn to prevent automatic
+resends. Invalid read-only tool calls can be corrected within the five-step loop. History
+retains five complete user/answer pairs without AI summarization. IDs are not guessed or
+rewritten. Schemas are generated from Pydantic. The model adapter uses structured JSON
+rather than assuming native tool support. Only loopback Ollama hosts are accepted.
+
+Next milestone: Phase 4 read-only message history and memory-aware smart reply suggestions, followed
+by live integration verification. No live daemon was installed or started during development.
+Contact reload is manual and SMS fallback after uncertain submission remains omitted.
+
+Phase 3 decisions: worker wakes every second to support 30/60/120-second persisted retry
+backoff. It retries only failures known to precede submission. Claims left in `sending`
+after a crash become failed for manual review, never automatically replayed. A shared
+mutation lock serializes app senders. Quiet hours, rate and duplicate checks defer
+unattended sends; old schedules require renewed background-delivery approval. Cron uses
+the saved contact timezone, skips DST gaps and second folds, and catches up at most one
+overdue occurrence. The first delivery is controlled by `send_at`. Installed plists use
+absolute paths and restart only after unsuccessful exits.
+
+Tests are implemented alongside each phase, rather than deferred until Phase 4.
 
 ---
 
@@ -26,10 +65,14 @@ semantics before multiple workers can safely deliver messages.
 
 ```
 messenger_assistant_mac/
+├── .gitignore
 ├── pyproject.toml
+├── uv.lock
 ├── README.md
 ├── skeleton.md                          ← You are here
-├── contacts.json
+├── contacts.example.json                ← Tracked sample only
+├── contacts.json                        ← Local, ignored personal contacts
+├── contacts.import-review.json          ← Local, ignored import review
 ├── config.json
 ├── com.imsg-agent.daemon.plist
 │
@@ -68,6 +111,13 @@ messenger_assistant_mac/
 │   │   ├── __init__.py
 │   │   └── manager.py
 │   │
+│   ├── memory/
+│   │   ├── __init__.py
+│   │   ├── models.py
+│   │   ├── repository.py
+│   │   ├── service.py
+│   │   └── cli.py
+│   │
 │   └── tools/
 │       ├── __init__.py
 │       ├── registry.py
@@ -79,7 +129,13 @@ messenger_assistant_mac/
 │       └── reply.py
 │
 └── tests/
+    ├── fixtures/
+    │   └── contacts.example.json
     ├── conftest.py
+    ├── test_foundation.py
+    ├── test_cli_delivery.py
+    ├── test_daemon.py
+    ├── test_memory.py
     ├── test_contacts.py
     ├── test_guardrails.py
     ├── test_validator.py
@@ -100,9 +156,13 @@ messenger_assistant_mac/
 | `pyproject.toml` | **Project Configuration** — Dependencies, entry points, build system, tool settings | Setup |
 | `README.md` | **Documentation** — Setup guide, architecture, CLI reference, dev workflow | Setup |
 | `skeleton.md` | **Project Skeleton** — This file. Maps every file and its purpose | Setup |
-| `contacts.json` | **Contact List Template** — Example contacts with groups, templates, metadata | Setup |
+| `contacts.example.json` | **Sample Contacts** — Synthetic contacts safe to publish | Setup |
+| `contacts.json` | **Personal Contacts** — Local and ignored; persistent contact IDs | Local data |
+| `contacts.import-review.json` | **Import Review** — Local and ignored; entries needing review | Local data |
+| `.gitignore` | Excludes personal contacts, databases, logs, environment, and caches | Setup |
+| `uv.lock` | Reproducible Python dependency resolution | Setup |
 | `config.json` | **Default Configuration** — Guardrail settings, Ollama model, data directory | Setup |
-| `com.imsg-agent.daemon.plist` | **launchd Config** — Auto-starts daemon on login, keeps alive on crash | Phase 3 |
+| `com.imsg-agent.daemon.plist` | **launchd Reference Template** — Installer generates a plist with absolute paths; restart on unsuccessful exits | Phase 3 |
 
 ### VS Code Workspace
 
@@ -125,9 +185,9 @@ messenger_assistant_mac/
 | `logger.py` | **Structured Logger** — Rich-powered logging for CLI (color) and daemon (file) | 1 |
 | `store.py` | **SQLite Store** — Schedules, send log, audit log, heartbeat. WAL mode. Built-in sqlite3. | 1 |
 | `messenger.py` | **AppleScript Bridge** — Sends iMessage/SMS via osascript. Escaping, version detection, dry-run. | 1 |
-| `reader.py` | **Message Reader** — Reads ~/Library/Messages/chat.db (read-only). For smart replies. Requires Full Disk Access. | 4 |
-| `scheduler.py` | **Tick Scheduler** — 60-second polling loop. No setTimeout overflow. Handles sleep. Exponential backoff retry. | 3 |
-| `cli.py` | **CLI Interface** — Typer + Rich. Commands: chat, send, schedule, list, cancel, reply, contacts, daemon, config. | 3 |
+| `reader.py` | **Message Reader (placeholder)** — Planned read-only Messages history; requires Full Disk Access. | 4 |
+| `scheduler.py` | **Tick Scheduler** — 1-second polling loop. Persistent claims, sleep recovery, and safe retry backoff. | 3 |
+| `cli.py` | **CLI Interface** — Typer + Rich. Commands: chat, send, schedule, list, cancel, contacts, daemon, config, memory. Reply is planned. | 3 |
 | `daemon.py` | **Background Daemon** — Tick scheduler + heartbeat. Signal handling. launchd managed. | 3 |
 
 ---
@@ -138,10 +198,10 @@ messenger_assistant_mac/
 |---|---|---|
 | `__init__.py` | **Agent Package Init** | 2 |
 | `orchestrator.py` | **Agent Orchestrator** — Core AI loop: user input → Ollama → validate → guardrail → confirm → execute → respond. Max 5 tool iterations. Context capped at 10 messages. | 2 |
-| `backend.py` | **Ollama Backend** — SDK wrapper: chat(), is_available(), ensure_model_pulled() | 2 |
+| `backend.py` | **Ollama Backend** — Loopback-only SDK adapter; structured JSON, availability and model setup | 2 |
 | `prompts.py` | **System Prompt Builder** — Dynamic prompt with current time, contact summary, pending count, rules. Contacts NOT injected (lazy via tool). | 2 |
 | `validator.py` | **Tool-Call Validator** — Pydantic schema enforcement. Auto-repairs: misspelled fields (rapidfuzz), NL dates (dateparser), type coercion. | 2 |
-| `fallback.py` | **Regex Fallback Parser** — Catches common command patterns when model fails (~15-20% with 12B). 6 regex patterns validated through Pydantic. | 2 |
+| `fallback.py` | **Regex Fallback Parser** — Handles explicit commands when the local model is unavailable. 6 regex patterns validated through Pydantic. | 2 |
 
 ---
 
@@ -160,7 +220,19 @@ messenger_assistant_mac/
 | File | Headline | Phase |
 |---|---|---|
 | `__init__.py` | **Contacts Package Init** | 1 |
-| `manager.py` | **Contact Manager** — Resolves names → phones. Pipeline: exact → alias → phone → fuzzy (rapidfuzz ≥70). Groups, templates, summary. | 1 |
+| `manager.py` | **Contact Manager** — Resolves names → phones. Pipeline: exact → alias → phone → fuzzy (rapidfuzz ≥70). Groups, templates, summary, and unique contact IDs. | 1 |
+
+---
+
+### Memory Module — `src/imsg_agent/memory/`
+
+| File | Responsibility | Stage |
+|---|---|---|
+| `__init__.py` | Memory package | Approved memory |
+| `models.py` | Limited vocabulary for language, tone, length, emoji, and formality | Approved memory |
+| `repository.py` | SQLite preferences, feedback, revision tracking, and deletion | Approved memory |
+| `service.py` | Scope resolution, exact-change confirmations, overrides, conflicts, and feedback proposals | Approved memory |
+| `cli.py` | List, remember, update, forget, record feedback, approve proposals, and delete feedback | Approved memory |
 
 ---
 
@@ -170,12 +242,12 @@ messenger_assistant_mac/
 |---|---|---|
 | `__init__.py` | **Tools Package Init** | 2 |
 | `registry.py` | **Tool Registry** — Register handlers, get Ollama schemas, dispatch tool calls. | 2 |
-| `schemas.py` | **Tool Schemas** — 8 tool definitions in Ollama JSON format: send, schedule, cancel, list, resolve, list_contacts, get_recent, suggest_reply. | 2 |
-| `send.py` | **Send Handler** — send_message_now: resolve contact → messenger.send() | 2 |
-| `schedule.py` | **Schedule Handler** — schedule_message: resolve contact → parse time → store.add(). Supports group: and template: prefixes. | 2 |
+| `schemas.py` | **Tool Schemas** — 11 generated schemas: nine active tools for sending, scheduling, cancellation, schedule listing, contact resolution/listing, and memory retrieval/save/forget. History and reply tools remain inactive. | 2 |
+| `send.py` | **Send Handler** — Submit the confirmed, resolved plan; log outcomes without uncertain retries | 2 |
+| `schedule.py` | **Schedule Handler** — Atomically persist the confirmed expanded batch with delivery approval. Registry resolves groups and templates. | 2 |
 | `manage.py` | **Manage Handlers** — list_scheduled: query store. cancel_scheduled: update status. | 2 |
 | `contacts.py` | **Contact Handlers** — resolve_contact: fuzzy lookup. list_contacts: filter by group. | 2 |
-| `reply.py` | **Reply Handlers** — get_recent_messages: read chat.db. suggest_reply: read + Ollama generate. Data never leaves machine. | 4 |
+| `reply.py` | **Reply Handlers (placeholder)** — Planned read-only history retrieval and local reply generation. | 4 |
 
 ---
 
@@ -183,6 +255,11 @@ messenger_assistant_mac/
 
 | File | Headline | Phase |
 |---|---|---|
+| `fixtures/contacts.example.json` | Synthetic contact data used by tests | Foundation |
+| `test_foundation.py` | Models, config, logging, and mocked messaging | Foundation |
+| `test_cli_delivery.py` | Direct CLI schedule/list/cancel and send previews | 3 |
+| `test_daemon.py` | Singleton worker, lifecycle, and mocked launchd management | 3 |
+| `test_memory.py` | Consent, persistence, identity, override precedence, feedback, forgetting, and concurrent changes | Approved memory |
 | `conftest.py` | **Shared Fixtures** — Temp SQLite DB, mock contacts, mock Ollama, mock messenger | 4 |
 | `test_contacts.py` | **Contact Tests** — Exact, alias, fuzzy, ambiguous, not found, group, template | 4 |
 | `test_guardrails.py` | **Guardrail Tests** — All 9 rules: blackout, rate limit, duplicate, batch, time | 4 |
@@ -200,5 +277,6 @@ messenger_assistant_mac/
 |---|---|---|---|
 | **1** | Foundation | models, config, logger, store, contacts/manager, messenger | Can resolve contacts and send messages |
 | **2** | Agent + Tools + Guardrails | tools/*, guardrails/*, agent/* | `imsg chat` works end-to-end |
-| **3** | Scheduler + CLI + Daemon | scheduler, cli, daemon, __main__, plist | Schedule → daemon fires → message sent |
-| **4** | Smart Replies + Tests | reader, tools/reply, tests/* | Smart replies work. All tests pass. |
+| **3** | Scheduler + CLI + Daemon | scheduler, cli, daemon, __main__, plist | Implemented; delivery verified with mocks only |
+| **Memory** | Approved preferences and feedback | memory/*, agent/tool integration | Persistent approved preferences; no retraining |
+| **4** | Smart replies and live verification | reader, tools/reply, reply CLI, integration tests | Remaining: read-only history and memory-aware suggestions |

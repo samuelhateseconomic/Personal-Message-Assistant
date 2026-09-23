@@ -6,6 +6,7 @@ Message data NEVER leaves the local machine — it is processed in-memory only.
 
 Requires Full Disk Access permission for Terminal.
 """
+
 from __future__ import annotations
 
 # TODO: Implement MessageReader class

@@ -106,3 +106,10 @@ def test_memory_store():
     item = store.add(message())
     assert store.get_by_id(item.id) == item
     store.close()
+
+
+def test_batch_insert_rolls_back_on_conflict(tmp_db):
+    first = message()
+    with pytest.raises(sqlite3.IntegrityError):
+        tmp_db.add_many([first, first])
+    assert tmp_db.get_pending() == []

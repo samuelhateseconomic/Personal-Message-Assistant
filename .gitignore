@@ -7,3 +7,14 @@ __pycache__/
 htmlcov/
 *.egg-info/
 .DS_Store
+
+# Local contact import review (contains personal data)
+contacts.import-review.json
+/contacts.json
+*.db
+*.db-shm
+*.db-wal
+*.db.lock
+daemon.lock
+daemon.stop
+*.log

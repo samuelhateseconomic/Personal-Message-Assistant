@@ -1,10 +1,13 @@
-"""Manage Tool Handlers — List and cancel scheduled messages.
+"""Read schedules and cancel only pending entries."""
 
-Provides handlers for:
-- list_scheduled: Query schedules by status from SQLite store
-- cancel_scheduled: Mark a pending schedule as cancelled
-"""
-from __future__ import annotations
 
-# TODO: Implement handle_list(args, store) -> dict
-# TODO: Implement handle_cancel(args, store) -> dict
+def handle_list(args, store):
+    return {
+        "schedules": [m.model_dump(mode="json") for m in store.list_schedules(args.get("status"))]
+    }
+
+
+def handle_cancel(args, store):
+    if not store.cancel_pending(args["id"]):
+        return {"error": "Schedule is missing or is no longer pending"}
+    return {"status": "cancelled", "id": args["id"]}

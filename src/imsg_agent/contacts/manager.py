@@ -17,6 +17,9 @@ class ContactManager:
     def reload(self) -> None:
         # Validate first so a malformed edit does not destroy the loaded contacts.
         data = ContactList.model_validate_json(self.path.read_text(encoding="utf-8"))
+        ids = [c.id for c in data.contacts if c.id is not None]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Contact IDs must be unique")
         self.contacts = data.contacts
 
     @staticmethod

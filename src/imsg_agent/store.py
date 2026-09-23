@@ -213,3 +213,94 @@ class Store:
         with self._connection() as db:
             row = db.execute("SELECT payload FROM heartbeat WHERE id=1").fetchone()
         return json.loads(row[0]) if row else None
+
+    def add_many(self, messages: list[ScheduledMessage]) -> None:
+        with self._connection() as db:
+            db.executemany(
+                "INSERT INTO schedules VALUES (?, ?, ?, ?)",
+                [(m.id, m.status, timestamp(m.send_at), m.model_dump_json()) for m in messages],
+            )
+
+    def cancel_pending(self, schedule_id: str) -> bool:
+        with self._connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT payload FROM schedules WHERE id=? AND status='pending'", (schedule_id,)
+            ).fetchone()
+            if row is None:
+                return False
+            message = ScheduledMessage.model_validate_json(row[0])
+            message.status = "cancelled"
+            db.execute(
+                "UPDATE schedules SET status=?, payload=? WHERE id=?",
+                ("cancelled", message.model_dump_json(), schedule_id),
+            )
+        return True
+
+    @contextmanager
+    def mutation_lock(self):
+        """Cooperative cross-process lock for guarded CLI submissions."""
+        import fcntl
+
+        with self._lock:
+            if self.path == ":memory:":
+                yield
+                return
+            with open(self.path + ".lock", "a") as handle:
+                fcntl.flock(handle, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(handle, fcntl.LOCK_UN)
+
+    def claim_due(self, schedule_id: str, now: datetime) -> ScheduledMessage | None:
+        """Persist submission intent before invoking the external messaging service."""
+        with self._connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT payload FROM schedules WHERE id=? AND status='pending' AND send_at<=?",
+                (schedule_id, timestamp(now)),
+            ).fetchone()
+            if row is None:
+                return None
+            message = ScheduledMessage.model_validate_json(row[0])
+            message.status = "sending"
+            message.attempts += 1
+            db.execute(
+                "UPDATE schedules SET status='sending',payload=? WHERE id=?",
+                (message.model_dump_json(), message.id),
+            )
+            return message
+
+    def recover_interrupted(self) -> int:
+        """Caller holds mutation_lock: no cooperating sender can still be active."""
+        with self._connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            rows = db.execute("SELECT payload FROM schedules WHERE status='sending'").fetchall()
+            for row in rows:
+                message = ScheduledMessage.model_validate_json(row[0])
+                message.status = "failed"
+                message.last_error = "Interrupted submission; delivery outcome unknown. Check Messages before recreating."
+                db.execute(
+                    "UPDATE schedules SET status='failed',payload=? WHERE id=?",
+                    (message.model_dump_json(), message.id),
+                )
+            return len(rows)
+
+    def finish_submission(
+        self, message: ScheduledMessage, *, success: bool, now: datetime, error: str | None = None
+    ) -> None:
+        """Atomically record the attempt and its next state after external submission."""
+        with self._connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT status FROM schedules WHERE id=?", (message.id,)).fetchone()
+            if row is None or row[0] != "sending":
+                raise ValueError("Schedule is not claimed for delivery")
+            db.execute(
+                "UPDATE schedules SET status=?,send_at=?,payload=? WHERE id=?",
+                (message.status, timestamp(message.send_at), message.model_dump_json(), message.id),
+            )
+            db.execute(
+                "INSERT INTO send_log (recipient,message,success,sent_at,error,schedule_id) VALUES (?,?,?,?,?,?)",
+                (message.to, message.message, int(success), timestamp(now), error, message.id),
+            )

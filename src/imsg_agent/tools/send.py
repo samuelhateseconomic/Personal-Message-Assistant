@@ -1,7 +1,18 @@
-"""Send Tool Handler — Sends a message immediately via AppleScript.
+"""Execute a resolved send plan; never retry an uncertain submission automatically."""
 
-Resolves the recipient contact, then delegates to Messenger.send().
-"""
-from __future__ import annotations
+from imsg_agent.messenger import MessengerError
 
-# TODO: Implement handle_send(args, messenger, contacts) -> dict
+
+def handle_send(args, messenger, store):
+    results = []
+    for item in args["items"]:
+        try:
+            result = messenger.send(item["to"], item["message"], service=item["service"])
+        except MessengerError as exc:
+            store.log_send(item["to"], item["message"], success=False, error=str(exc))
+            results.append({"to": item["to"], "status": "unknown_or_failed", "error": str(exc)})
+            break
+        if result.status != "dry_run":
+            store.log_send(item["to"], item["message"], success=True)
+        results.append({"to": item["to"], **result.model_dump()})
+    return {"results": results, "unattempted": len(args["items"]) - len(results)}

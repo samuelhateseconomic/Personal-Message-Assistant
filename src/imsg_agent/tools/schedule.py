@@ -1,11 +1,23 @@
-"""Schedule Tool Handler — Creates a scheduled message for future delivery.
+"""Persist an entire expanded schedule batch atomically."""
 
-Resolves the recipient, parses send_at datetime, validates timezone,
-and writes the schedule to the SQLite store. Supports both one-time
-(send_at only) and recurring (send_at + cron expression) schedules.
-"""
-from __future__ import annotations
+from imsg_agent.models import ScheduledMessage
 
-# TODO: Implement handle_schedule(args, store, contacts) -> dict
-# TODO: Handle group: prefix for batch scheduling
-# TODO: Handle template: prefix for stored message templates
+
+def handle_schedule(args, store):
+    messages = [
+        ScheduledMessage(
+            delivery_approved=True,
+            **{
+                k: v
+                for k, v in item.items()
+                if k in ScheduledMessage.model_fields and k != "delivery_approved"
+            },
+        )
+        for item in args["items"]
+    ]
+    store.add_many(messages)
+    return {
+        "status": "scheduled",
+        "ids": [m.id for m in messages],
+        "notice": "Approved for background delivery when the daemon is running.",
+    }

@@ -1,18 +1,28 @@
-"""Tool Schemas — JSON schema definitions for all 8 tools.
+"""Tool schemas generated from the same models that validate execution."""
 
-These schemas are passed to Ollama's chat() call so the model
-knows what tools are available and their expected arguments.
+from imsg_agent.models import TOOL_ARG_MODELS
 
-Tools:
-- send_message_now:    Send a message immediately
-- schedule_message:    Schedule for future delivery (one-time or recurring)
-- cancel_scheduled:    Cancel a pending schedule
-- list_scheduled:      List scheduled messages by status
-- resolve_contact:     Look up a contact by name/alias/phone
-- list_contacts:       List all contacts or filter by group
-- get_recent_messages: Read recent messages from chat.db
-- suggest_reply:       Read messages + generate a suggested reply
-"""
-from __future__ import annotations
-
-# TODO: Define TOOL_SCHEMAS list of dicts in Ollama tool format
+DESCRIPTIONS = {
+    "get_preferences": "Retrieve approved drafting preferences. Resolve contact first. Only pass overrides explicitly requested in the current user message; they are not saved.",
+    "remember_preference": "Save an explicitly requested drafting preference after user confirmation. Never infer lasting preferences from one draft or contact notes.",
+    "forget_preference": "Forget a stored preference and linked draft feedback after user confirmation.",
+    "send_message_now": "Submit a message now, after confirmation. to accepts a name, phone, or group:NAME.",
+    "schedule_message": "Store a schedule after confirmation. Daemon must be running for delivery. Supports group:NAME and template:KEY.",
+    "cancel_scheduled": "Cancel a pending schedule after confirmation.",
+    "list_scheduled": "List stored schedules.",
+    "resolve_contact": "Retrieve a contact with sources; ambiguous matches require clarification.",
+    "list_contacts": "List contact names and phone numbers, optionally by group.",
+    "get_recent_messages": "Read conversation history (not implemented yet).",
+    "suggest_reply": "Suggest a reply (not implemented yet).",
+}
+TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": DESCRIPTIONS[name],
+            "parameters": model.model_json_schema(),
+        },
+    }
+    for name, model in TOOL_ARG_MODELS.items()
+]

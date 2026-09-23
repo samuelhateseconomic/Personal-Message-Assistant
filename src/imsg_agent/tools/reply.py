@@ -6,6 +6,7 @@ Provides handlers for:
 
 Message content NEVER leaves the local machine.
 """
+
 from __future__ import annotations
 
 # TODO: Implement handle_get_recent(args, reader, contacts) -> dict

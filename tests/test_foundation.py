@@ -18,8 +18,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_templates_match_models():
     AppConfig.model_validate_json((ROOT / "config.json").read_text())
-    assert len(ContactList.model_validate_json((ROOT / "contacts.json").read_text()).contacts) == 2
-    assert len(TOOL_ARG_MODELS) == 8
+    assert (
+        len(
+            ContactList.model_validate_json(
+                (ROOT / "tests/fixtures/contacts.example.json").read_text()
+            ).contacts
+        )
+        == 2
+    )
+    assert len(TOOL_ARG_MODELS) == 11
 
 
 def test_config_creation_and_existing_settings(tmp_path):
@@ -120,7 +127,14 @@ def test_cli_contacts_and_missing_file(tmp_path):
 
     runner = CliRunner()
     result = runner.invoke(
-        app, ["contacts", "--path", str(ROOT / "contacts.json"), "--group", "family"]
+        app,
+        [
+            "contacts",
+            "--path",
+            str(ROOT / "tests/fixtures/contacts.example.json"),
+            "--group",
+            "family",
+        ],
     )
     assert result.exit_code == 0
     assert "Mom" in result.stdout
@@ -128,3 +142,18 @@ def test_cli_contacts_and_missing_file(tmp_path):
     result = runner.invoke(app, ["contacts", "--path", str(tmp_path / "missing.json")])
     assert result.exit_code == 1
     assert "Cannot load contacts" in result.stdout
+
+
+def test_messenger_startup_failure_is_safe_to_retry():
+    from imsg_agent.messenger import MessengerUnavailable
+
+    with (
+        patch("imsg_agent.messenger.platform.system", return_value="Darwin"),
+        patch(
+            "imsg_agent.messenger.subprocess.run", side_effect=subprocess.TimeoutExpired("open", 30)
+        ) as run,
+    ):
+        with pytest.raises(MessengerUnavailable):
+            Messenger().send("+15550109999", "hello")
+        run.assert_called_once()
+        assert run.call_args.args[0][0] == "/usr/bin/open"

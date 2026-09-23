@@ -12,6 +12,10 @@ class MessengerError(RuntimeError):
     """Submission failed or its outcome is unknown; do not blindly resend."""
 
 
+class MessengerUnavailable(MessengerError):
+    """Failure before submission; retrying cannot duplicate a message."""
+
+
 class Messenger:
     def __init__(self, dry_run: bool = False, timeout: float = 30):
         self.dry_run = dry_run
@@ -57,6 +61,11 @@ class Messenger:
 end run""".replace("SERVICE_TYPE", service)
         try:
             self.ensure_messages_running()
+        except (subprocess.SubprocessError, OSError) as exc:
+            raise MessengerUnavailable(
+                "Could not open Messages; no submission was attempted"
+            ) from exc
+        try:
             subprocess.run(
                 ["/usr/bin/osascript", "-e", script, to, message],
                 check=True,
