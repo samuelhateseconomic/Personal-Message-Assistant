@@ -67,6 +67,9 @@ class Agent:
             result = r.execute(name, args)
             used_tool = True
             receipt = json.dumps(result, ensure_ascii=False)
+            if name == "suggest_reply":
+                # A reply request ends with a draft; never let the model turn it into a send.
+                return self._finish(user_input, receipt)
             if isinstance(name, str) and name in MUTATIONS:
                 # End the turn after any mutation attempt: no automatic retries or hidden follow-ups.
                 if name in ("remember_preference", "forget_preference") and result.get(

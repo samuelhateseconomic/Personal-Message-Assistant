@@ -155,10 +155,15 @@ class GetRecentMessagesArgs(Model):
 
 
 class SuggestReplyArgs(GetRecentMessagesArgs):
-    instruction: str = ""
+    instruction: str = Field(default="", max_length=4000)
+    overrides: dict[str, str] = Field(default_factory=dict)
 
 
 class MessageRecord(Model):
+    id: str = ""
+    source: str = ""
+    content_status: Literal["text", "unavailable", "attachment"] = "text"
+    truncated: bool = False
     text: str
     sent_at: datetime
     is_from_me: bool

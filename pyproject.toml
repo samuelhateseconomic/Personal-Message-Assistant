@@ -11,6 +11,7 @@ dependencies = [
     "dateparser>=1.2",
     "rapidfuzz>=3.9",
     "croniter>=3.0",
+    "pytypedstream>=0.1.0,<0.2",
 ]
 
 [project.optional-dependencies]

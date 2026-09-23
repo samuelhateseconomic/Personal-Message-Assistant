@@ -5,11 +5,11 @@
 Planned: schedule messages with natural language using local Ollama inference.
 Message delivery still uses Apple's messaging services and, for SMS, your carrier.
 
-## Development status — Phase 3 + approved memory
+## Development status — Phase 4 implementation + approved memory
 
 Implemented: foundation storage and contacts, structured contact retrieval with source
 references, tool argument validation, nine guardrails, local Ollama orchestration,
-regex fallback commands, and all CLI commands except smart replies. Phase 3 adds persistent delivery claims,
+regex fallback commands, read-only history, memory-aware reply suggestions, and the CLI. Phase 3 adds persistent delivery claims,
 cron recurrence, conservative retries, a foreground worker, and launchd management.
 
 Chat can submit a message, store a schedule, or cancel a pending schedule after
@@ -19,17 +19,71 @@ mutations without sending, creating schedules, or cancelling them; audit records
 still be written. Both CLI processes must use the same database for the send-rate lock
 and shared history to apply.
 
-**Approved schedules deliver when the daemon is running.** Smart replies, Messages
-history reading, document embeddings, and relevance-based retrieval gating remain
-future work. Contact retrieval currently checks identity,
+**Approved schedules deliver when the daemon is running.** Reply suggestions use a
+deterministic identity/readability gate; document embeddings and semantic relevance
+scoring remain future work. Contact retrieval checks identity,
 returns stored fields with source references, and asks for clarification on ambiguity;
 it does not verify every model-generated statement or citation.
 
 Automated checks use temporary data and mocked messaging/model calls. Real message
-delivery, a live Ollama conversation, and installed launchd operation have not been
-verified. No live daemon has been installed or started during development. The messaging bridge
+delivery, live Messages database compatibility, a live Ollama conversation, and installed
+launchd operation have not been verified. No live daemon has been installed or started during development. The messaging bridge
 supports explicit iMessage/SMS selection; it does not retry uncertain iMessage sends
 as SMS. Contact reload remains explicit.
+
+### Read history and suggest replies
+
+```bash
+# Read only the selected person's recent direct conversation
+uv run imsg history Mom --contacts contacts.json --limit 10
+
+# Generate a draft using approved preferences; this never sends it
+uv run imsg reply Mom --contacts contacts.json
+
+# Override language for this draft without changing saved preferences
+uv run imsg reply Mom --contacts contacts.json --language English --instruction "Ask what time works"
+```
+
+The default source is `~/Library/Messages/chat.db`. `history`, `reply`, and `chat`
+accept `--messages-db /absolute/path/chat.db` for a compatible test database. The
+app does not copy the source or change macOS permissions. If access is denied,
+allow the actual terminal/host app in System Settings → Privacy & Security → Full
+Disk Access, restart it, then retry. `history` needs no model; `reply` uses local Ollama.
+No live conversations were accessed while implementing this feature.
+
+The reader uses a read-only SQLite connection with query-only mode, bounded queries,
+complete-number matching, and direct-chat membership checks. Group chats and email-only
+threads are excluded. Selection requires explicit direct-chat style and one matching
+participant; unknown styles are excluded, and schemas without chat-type metadata are
+rejected. It includes both incoming and outgoing messages, orders old
+second-resolution and newer nanosecond-resolution timestamps consistently, and filters
+reaction/service/deleted/retracted rows where those schema fields are available.
+
+Supported plain text and attributed-string archives are decoded. Unsupported archives
+and attachments remain explicit missing content; the app does not guess their meaning.
+Messages are capped at 4,000 characters each; reply context is capped at 20,000 characters
+and 100 messages. The latest incoming and latest overall message must be readable and
+untruncated. No incoming history, unreadable latest content, or an ambiguous contact
+produces clarification instead of a fabricated draft. When the latest message is yours,
+provide `--instruction` to request a follow-up rather than an accidental second reply.
+
+Reply generation is a separate model call without tools. It returns a draft and source
+IDs, then ends the chat turn; no send, schedule, or feedback write follows automatically.
+The source IDs must exist in the supplied text context and include the latest incoming
+message. This verifies provenance only, not the truth of every generated sentence.
+Review the draft before choosing to send it through the separately confirmed send command.
+
+Conversation text is not written to the application's database or auto-saved as feedback.
+It is held in process memory and passed only to the configured loopback Ollama endpoint.
+Use the explicit memory feedback command if you want to retain a correction.
+
+Archive parsing uses [pytypedstream](https://github.com/dgelessus/python-typedstream),
+a separate LGPL-licensed dependency. Messages timestamp/schema behavior was checked
+against the [imessage-exporter source](https://github.com/ReagentX/imessage-exporter).
+The direct/group style distinction is also documented in the
+[imsg schema discussion](https://github.com/openclaw/imsg/issues/57).
+The Messages schema is not a stable public API; synthetic tests cannot establish
+compatibility with every macOS version, rich message format, or editing/unsend variant.
 
 ### Approved preference memory
 
@@ -258,7 +312,7 @@ uv run imsg config
 
 ## CLI Reference
 
-All commands below are implemented except `reply`, which is planned for Phase 4.
+All commands below are implemented; live platform integration remains unverified.
 `contacts` and `config` also accept `--path`. Mutation commands accept `--dry-run`;
 `chat`, send/schedule/list/cancel, and daemon commands accept `--config`.
 
@@ -269,7 +323,8 @@ All commands below are implemented except `reply`, which is planned for Phase 4.
 | `imsg schedule <to> <msg> --at <time> [--cron <expr>]` | Schedule delivery |
 | `imsg list [--status ...]` | List schedules |
 | `imsg cancel <id>` | Cancel a schedule |
-| `imsg reply <contact>` | Smart reply |
+| `imsg history <contact>` | Read recent direct messages |
+| `imsg reply <contact>` | Draft a reply without sending |
 | `imsg contacts [--group <name>]` | List contacts |
 | `imsg daemon start\|stop\|status\|install\|uninstall` | Manage daemon |
 | `imsg config` | Show config |

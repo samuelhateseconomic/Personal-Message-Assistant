@@ -2,23 +2,24 @@
 
 This document maps the current project, its implemented behavior, and the remaining build phases.
 
-Phase 3 publication includes the previously uncommitted Phase 2 implementation and approved memory.
-Validation: 130 automated tests, Ruff lint/format checks, and diff checks passed. Live Ollama,
-Messages delivery, and installed launchd operation remain unverified.
+Phase 3 and approved memory were published in a2ff30c. Phase 4 adds read-only history and reply suggestions.
+Validation: 167 automated tests, Ruff lint/format checks, and diff checks passed. Live Ollama,
+Messages database compatibility/delivery, and installed launchd operation remain unverified.
 
-## Implementation status — Phase 3 + approved memory
+## Implementation status — Phase 4 implementation + approved memory
 
 - Phase 1: implemented and tested. Live macOS message delivery remains unverified.
 - Phase 2: implemented: structured JSON Ollama adapter, prompt builder, validator,
-  six-pattern fallback parser, bounded agent loop, nine active tools (including three memory tools), nine guardrails,
-  exact-plan confirmations, and a `chat` CLI command. Reply/history tools retain schemas
-  but are not exposed to the model until their Phase 4 implementations exist.
+  six-pattern fallback parser, bounded agent loop, eleven active tools in chat (including three memory tools), nine guardrails,
+  exact-plan confirmations, and a `chat` CLI command. Reader/reply handlers are exposed
+  only when their reader/backend dependencies are provided.
 - Phase 3: implemented: direct send/schedule/list/cancel CLI, persistent claims, cron
   scheduling, safe retries, overdue handling, delivery-time checks, crash recovery,
   singleton foreground daemon, heartbeat, notifications, and launchd management.
   Daemon/launchd/sending tests are mocked; live integration remains unverified.
-- Phase 4: foundation, agent, scheduler, daemon, and CLI tests implemented. Message
-  history reading and smart replies remain unimplemented.
+- Phase 4: read-only direct-message history, archived-text decoding, identity/readability
+  gating, memory-aware reply suggestions, history/reply CLI, and synthetic tests implemented.
+  Live Messages/Ollama/platform verification remains outstanding.
 - Approved memory: `memory/models.py`, `repository.py`, `service.py`, and `cli.py`
   implement approved preferences, opt-in draft feedback, conflict confirmations,
   management commands, and local SQLite persistence. Chat tools retrieve/save/forget
@@ -44,8 +45,8 @@ retains five complete user/answer pairs without AI summarization. IDs are not gu
 rewritten. Schemas are generated from Pydantic. The model adapter uses structured JSON
 rather than assuming native tool support. Only loopback Ollama hosts are accepted.
 
-Next milestone: Phase 4 read-only message history and memory-aware smart reply suggestions, followed
-by live integration verification. No live daemon was installed or started during development.
+Next milestone: live integration verification with explicitly selected conversations and a
+reviewed test-send plan. Phase 4 itself has not accessed live Messages data or sent any messages. No live daemon was installed or started during development.
 Contact reload is manual and SMS fallback after uncertain submission remains omitted.
 
 Phase 3 decisions: worker wakes every second to support 30/60/120-second persisted retry
@@ -136,6 +137,8 @@ messenger_assistant_mac/
     ├── test_cli_delivery.py
     ├── test_daemon.py
     ├── test_memory.py
+    ├── test_reader.py
+    ├── test_reply.py
     ├── test_contacts.py
     ├── test_guardrails.py
     ├── test_validator.py
@@ -185,9 +188,9 @@ messenger_assistant_mac/
 | `logger.py` | **Structured Logger** — Rich-powered logging for CLI (color) and daemon (file) | 1 |
 | `store.py` | **SQLite Store** — Schedules, send log, audit log, heartbeat. WAL mode. Built-in sqlite3. | 1 |
 | `messenger.py` | **AppleScript Bridge** — Sends iMessage/SMS via osascript. Escaping, version detection, dry-run. | 1 |
-| `reader.py` | **Message Reader (placeholder)** — Planned read-only Messages history; requires Full Disk Access. | 4 |
+| `reader.py` | **Message Reader** — Read-only direct-phone history, schema checks, timestamps, supported archive decoding, and bounded reads; requires Full Disk Access. | 4 |
 | `scheduler.py` | **Tick Scheduler** — 1-second polling loop. Persistent claims, sleep recovery, and safe retry backoff. | 3 |
-| `cli.py` | **CLI Interface** — Typer + Rich. Commands: chat, send, schedule, list, cancel, contacts, daemon, config, memory. Reply is planned. | 3 |
+| `cli.py` | **CLI Interface** — Typer + Rich. Commands: chat, send, schedule, list, cancel, history, reply, contacts, daemon, config, memory. | 3 |
 | `daemon.py` | **Background Daemon** — Tick scheduler + heartbeat. Signal handling. launchd managed. | 3 |
 
 ---
@@ -242,12 +245,12 @@ messenger_assistant_mac/
 |---|---|---|
 | `__init__.py` | **Tools Package Init** | 2 |
 | `registry.py` | **Tool Registry** — Register handlers, get Ollama schemas, dispatch tool calls. | 2 |
-| `schemas.py` | **Tool Schemas** — 11 generated schemas: nine active tools for sending, scheduling, cancellation, schedule listing, contact resolution/listing, and memory retrieval/save/forget. History and reply tools remain inactive. | 2 |
+| `schemas.py` | **Tool Schemas** — 11 generated schemas including memory, history, and reply tools; availability is dependency-gated. | 2 |
 | `send.py` | **Send Handler** — Submit the confirmed, resolved plan; log outcomes without uncertain retries | 2 |
 | `schedule.py` | **Schedule Handler** — Atomically persist the confirmed expanded batch with delivery approval. Registry resolves groups and templates. | 2 |
 | `manage.py` | **Manage Handlers** — list_scheduled: query store. cancel_scheduled: update status. | 2 |
 | `contacts.py` | **Contact Handlers** — resolve_contact: fuzzy lookup. list_contacts: filter by group. | 2 |
-| `reply.py` | **Reply Handlers (placeholder)** — Planned read-only history retrieval and local reply generation. | 4 |
+| `reply.py` | **Reply Handlers** — Read-only history and draft-only generation with evidence/source checks and approved preferences. | 4 |
 
 ---
 
@@ -259,6 +262,8 @@ messenger_assistant_mac/
 | `test_foundation.py` | Models, config, logging, and mocked messaging | Foundation |
 | `test_cli_delivery.py` | Direct CLI schedule/list/cancel and send previews | 3 |
 | `test_daemon.py` | Singleton worker, lifecycle, and mocked launchd management | 3 |
+| `test_reader.py` | Synthetic SQLite schemas, archives, group exclusion, read-only access, WAL, and timestamps | 4 |
+| `test_reply.py` | Evidence gate, preference overrides, draft validation, no-send behavior, and CLI | 4 |
 | `test_memory.py` | Consent, persistence, identity, override precedence, feedback, forgetting, and concurrent changes | Approved memory |
 | `conftest.py` | **Shared Fixtures** — Temp SQLite DB, mock contacts, mock Ollama, mock messenger | 4 |
 | `test_contacts.py` | **Contact Tests** — Exact, alias, fuzzy, ambiguous, not found, group, template | 4 |
@@ -279,4 +284,21 @@ messenger_assistant_mac/
 | **2** | Agent + Tools + Guardrails | tools/*, guardrails/*, agent/* | `imsg chat` works end-to-end |
 | **3** | Scheduler + CLI + Daemon | scheduler, cli, daemon, __main__, plist | Implemented; delivery verified with mocks only |
 | **Memory** | Approved preferences and feedback | memory/*, agent/tool integration | Persistent approved preferences; no retraining |
-| **4** | Smart replies and live verification | reader, tools/reply, reply CLI, integration tests | Remaining: read-only history and memory-aware suggestions |
+| **4** | Smart replies and live verification | reader, tools/reply, reply CLI, integration tests | History and suggestions implemented; live integration remains unverified |
+
+
+## Phase 4 behavior and limits
+
+- Only direct phone conversations are selected; groups and email-only threads are excluded.
+- Chat selection requires explicit direct-chat style plus one matching participant; unknown
+  styles are excluded and schemas missing chat-type metadata fail closed.
+- SQLite is opened with mode=ro and query_only. No source copy or permission change is made.
+- pytypedstream decodes supported attributed-string archives. Unsupported bodies remain
+  unreadable; no raw-byte string guessing is used.
+- Reply generation requires readable, untruncated latest context and an incoming message.
+  Context is bounded; source IDs must refer to supplied readable messages.
+- Source matching is provenance validation, not factual or semantic citation verification.
+- Draft generation has no tools and ends the chat turn; sending remains a separate action.
+- No automatic saving of conversation history or draft feedback occurs.
+- Document RAG, attachments/media understanding, and exhaustive macOS format compatibility
+  remain outside the implemented scope.

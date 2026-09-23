@@ -53,6 +53,7 @@ def list_contacts(
 
 @app.command("chat")
 def chat(
+    messages_db: Annotated[Path | None, typer.Option("--messages-db")] = None,
     path: Annotated[Path | None, typer.Option("--config")] = None,
     contacts_path: Annotated[Path | None, typer.Option("--contacts")] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
@@ -76,6 +77,9 @@ def chat(
             console.print(summary, markup=False)
             return typer.confirm("Approve this exact action?", default=False)
 
+        from imsg_agent.reader import MessageReader
+
+        backend = OllamaBackend(config.ollama_model, config.ollama_host)
         registry = ToolRegistry(
             manager,
             store,
@@ -84,8 +88,10 @@ def chat(
             confirm=confirm,
             dry_run=dry_run,
             timezone=timezone,
+            reader=MessageReader(messages_db),
+            backend=backend,
         )
-        agent = Agent(OllamaBackend(config.ollama_model, config.ollama_host), registry)
+        agent = Agent(backend, registry)
         console.print(
             "Local chat. /quit to exit; /reset to clear. Approved schedules deliver while the daemon is running.",
             markup=False,
@@ -271,3 +277,73 @@ def daemon_uninstall(config: Annotated[Path | None, typer.Option("--config")] = 
 
 
 app.add_typer(memory_app, name="memory")
+
+
+@app.command("history")
+def message_history(
+    contact: str,
+    config: Annotated[Path | None, typer.Option("--config")] = None,
+    contacts: Annotated[Path | None, typer.Option("--contacts")] = None,
+    messages_db: Annotated[Path | None, typer.Option("--messages-db")] = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 10,
+):
+    """Read a contact's recent direct messages; requires Messages database access."""
+    _reply_command("history", contact, config, contacts, messages_db, limit)
+
+
+@app.command("reply")
+def suggest_reply(
+    contact: str,
+    instruction: Annotated[str, typer.Option("--instruction")] = "",
+    language: Annotated[str | None, typer.Option("--language")] = None,
+    config: Annotated[Path | None, typer.Option("--config")] = None,
+    contacts: Annotated[Path | None, typer.Option("--contacts")] = None,
+    messages_db: Annotated[Path | None, typer.Option("--messages-db")] = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 10,
+):
+    """Suggest a reply using local history and preferences. Never sends a message."""
+    _reply_command("reply", contact, config, contacts, messages_db, limit, instruction, language)
+
+
+def _reply_command(
+    action, contact, config_path, contacts_path, messages_db, limit, instruction="", language=None
+):
+    from imsg_agent.agent.backend import OllamaBackend
+    from imsg_agent.memory.service import MemoryService
+    from imsg_agent.models import SuggestReplyArgs
+    from imsg_agent.reader import MessageReader
+    from imsg_agent.store import Store
+    from imsg_agent.tools.reply import handle_get_recent, handle_suggest_reply
+
+    store = None
+    try:
+        config = load_config(config_path)
+        contacts = ContactManager(contacts_path or Path(config.data_dir) / "contacts.json")
+        reader = MessageReader(messages_db)
+        args = SuggestReplyArgs(
+            contact=contact,
+            limit=limit,
+            instruction=instruction,
+            overrides={"language": language} if language else {},
+        ).model_dump()
+        if action == "history":
+            result = handle_get_recent(args, reader, contacts)
+        else:
+            store = Store(Path(config.data_dir) / "imsg_agent.db")
+            result = handle_suggest_reply(
+                args,
+                reader,
+                contacts,
+                OllamaBackend(config.ollama_model, config.ollama_host),
+                MemoryService(store, contacts),
+                config.guardrails.max_message_length,
+            )
+        console.print_json(data=result)
+        if result.get("status") not in ("ok", "draft", "no_history"):
+            raise typer.Exit(1)
+    except (OSError, ValueError) as exc:
+        console.print(f"Message history error: {exc}", markup=False)
+        raise typer.Exit(1) from exc
+    finally:
+        if store:
+            store.close()

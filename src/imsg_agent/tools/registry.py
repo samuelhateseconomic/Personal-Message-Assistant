@@ -32,6 +32,8 @@ class ToolRegistry:
         dry_run=False,
         timezone="America/Los_Angeles",
         now=utc_now,
+        reader=None,
+        backend=None,
     ):
         self.contacts, self.store, self.messenger = contacts, store, messenger
         self.config, self.now = config, now
@@ -55,6 +57,15 @@ class ToolRegistry:
             "schedule_message": lambda a: handle_schedule(a, store),
             "cancel_scheduled": lambda a: handle_cancel(a, store),
         }
+
+        if reader is not None:
+            from imsg_agent.tools.reply import handle_get_recent, handle_suggest_reply
+
+            self.handlers["get_recent_messages"] = lambda a: handle_get_recent(a, reader, contacts)
+            if backend is not None:
+                self.handlers["suggest_reply"] = lambda a: handle_suggest_reply(
+                    a, reader, contacts, backend, self.memory, config.max_message_length
+                )
 
     def _resolve_with_memory(self, args):
         result = handle_resolve(args, self.contacts)

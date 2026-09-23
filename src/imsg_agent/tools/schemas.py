@@ -12,8 +12,8 @@ DESCRIPTIONS = {
     "list_scheduled": "List stored schedules.",
     "resolve_contact": "Retrieve a contact with sources; ambiguous matches require clarification.",
     "list_contacts": "List contact names and phone numbers, optionally by group.",
-    "get_recent_messages": "Read conversation history (not implemented yet).",
-    "suggest_reply": "Suggest a reply (not implemented yet).",
+    "get_recent_messages": "Read recent one-to-one phone conversation messages without changing the database.",
+    "suggest_reply": "Draft a reply from readable incoming history and approved preferences. Never sends or saves feedback. Explicit overrides apply only to this draft.",
 }
 TOOL_SCHEMAS = [
     {
