@@ -1,6 +1,15 @@
 # Publication privacy cleanup
 
-Prepared for review. GitHub history has not yet been replaced by this plan.
+Published on 2026-09-25: the affected transformation commit was replaced with
+sanitized commit `55ddf7c` using an exact force-with-lease check. The local main branch
+was aligned without changing ignored personal files. Author name and Berkeley email
+were retained as requested. Earlier unaffected commits remain unchanged.
+
+The replacement history passed checks for imported phone numbers, email addresses,
+postal addresses, contact IDs, the exposed contact labels, and the personal checkout
+path. This is a scoped audit, not a guarantee against every sensitive-data format.
+Existing clones, cached commit views, and local reflogs/checkpoints may retain older
+objects; no claim of erasure from those locations is made.
 
 ## Sanitized content
 
