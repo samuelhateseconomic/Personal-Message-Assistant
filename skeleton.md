@@ -7,15 +7,23 @@ Validation: 173 automated tests, Ruff lint/format checks, and diff checks passed
 Selected live history and Gemma drafting passed; scheduled delivery and installed
 launchd operation remain unverified. See docs/ACCEPTANCE_RESULTS.md for evidence and limits.
 
-## Native desktop milestone A — 2026-09-25
+## Current native desktop preview — 0.4.0
 
-`desktop/` now contains a runnable SwiftUI prototype with Assistant, Plan and Contacts,
-synthetic data, review sheets, approval invalidation and simulated locking. The app
-built successfully using a temporary Swift cache; five native core checks passed, and
-manual UI checks verified review/edit invalidation, contact conflict resolution, and
-lock/unlock. See [desktop/README.md](desktop/README.md). No real Contacts/authentication,
-model IPC or delivery is connected to the UI yet. Phase B remains the next integration
-milestone. The existing Python engine and its 173-test suite remain separate.
+`desktop/` contains SwiftUI Assistant, Plan and Contacts workspaces with LocalAuthentication,
+shared searchable Apple Contacts recipients, reviewed native contact saves, and per-field
+conflict choices. Plan confirmation now persists an encrypted draft-only record before
+resetting the composer. Saved plans restore on unlock/restart and support cancellation.
+The Keychain key stays outside the repository; ciphertext is stored in Application Support.
+NativeServices is the sole plan-store writer, with authorization checks and serialized file
+updates. No Python helper, real message history, model IPC or delivery is connected yet.
+
+Thirty native synthetic check groups pass (eleven core, nineteen integration), including
+restart, corruption/key-loss handling, cancellation and duplicate-save rejection. The
+existing Python engine and its previously passing 173-test suite remain separate.
+B1/B2/B3 device/signing checks, final B4 key/recovery proof, and production C1/C2/C3 gates
+remain open. See [desktop/README.md](desktop/README.md) and
+[storage decision](docs/NATIVE_STORAGE_DECISION.md). Later version-specific entries below
+record earlier preview stages; this section is the current status.
 
 ## Implementation status — Phase 4 implementation + approved memory
 
@@ -322,3 +330,48 @@ messenger_assistant_mac/
 - No automatic saving of conversation history or draft feedback occurs.
 - Document RAG, attachments/media understanding, and exhaustive macOS format compatibility
   remain outside the implemented scope.
+
+### Contact profile editor
+
+Native Contacts panel now supports search and app-only personal information: name, connection type, optional birthday, and notes. Explicit saves persist locally outside Git with owner-only file permissions. Apple Contacts remains read-only; these annotations are not yet inputs to AI drafting. Local profile JSON is not encrypted. Synthetic storage checks are included; real-device editor verification remains pending.
+
+The contact profile editor also supports **New contact** with explicit creation/cancellation. New contacts use stable app-local IDs and persist outside the repository; Apple Contacts writes and messaging-recipient integration remain pending. Preview 0.2.1 identifies this build.
+
+Preview 0.2.2 adds explicit success/failure banners and a New contact sheet. Successful creation closes and resets the sheet; failures retain entries for retry.
+
+Preview 0.2.3 adds persistent phone/email fields for local contacts and live read-only phone/email details for native contacts, including search. Native-to-app refresh is wired; two-way writes remain unimplemented pending the contact conflict gate. Existing profile JSON loads without migration loss.
+
+### Current native sync preview — 0.3.0
+
+Supersedes the earlier read-only preview: reviewed native create/update is implemented for
+single-source records. New contacts require an explicit account. Native name/phone/email/
+birthday updates use three-way merge, per-field conflict choices, stale-review rejection,
+and post-save verification. Mac changes refresh the source list. Private relationship and
+notes remain local; app-only profiles can be linked after native creation. Uncertain saves
+are not replayed, and partial annotation failures retry only local storage. Synthetic sync
+checks pass; real-account/UI verification and the production conflict gate remain pending.
+Apple's last-writer-wins API leaves an external-writer race; this is not atomic conflict safety.
+
+### Shared contact recipients — 0.3.1
+
+Assistant, Plan, and Contacts share the native contact connection. Assistant/Plan use a
+searchable native recipient and explicit phone/email destination. Review binds the exact
+recipient, rechecks the source, and rejects stale approval; changing or losing a destination
+clears the old draft. Lock removes native recipient/draft data. Delivery remains disabled.
+Nine core and thirteen integration check groups pass; live UI validation awaits user unlock.
+
+### Plan confirmation — 0.3.2
+
+Successful reviewed confirmation now adds an immutable session-only plan snapshot, shows a
+success pop-up after review closes, and resets the composer. Failed confirmation preserves
+inputs and does not append. Duplicate/expired confirmations are covered by automated checks.
+Plans are not persisted or scheduled for delivery. Eleven core plus thirteen integration
+check groups pass; the native alert transition remains pending on-device verification.
+
+### Saved draft plans — 0.4.0
+
+Confirmed plans now survive restart in a versioned AES-GCM store with a Keychain-held key.
+Confirm persists before composer reset; cancellation persists; lock clears the loaded list.
+Missing keys, corrupt ciphertext and unknown schemas fail closed without replacing existing
+data. Older Python databases/jobs are not imported or activated. Thirty native check groups
+pass; real Keychain access/upgrade, alert UI and cross-restart device verification are pending.

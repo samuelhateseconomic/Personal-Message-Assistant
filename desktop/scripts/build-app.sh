@@ -15,10 +15,12 @@ cat > "$APP_PATH/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>local.messageassistant.prototype</string>
 <key>CFBundleName</key><string>Message Assistant Demo</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>0.4.0</string>
+<key>CFBundleVersion</key><string>9</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
+<key>NSContactsUsageDescription</key><string>Read contacts and save reviewed contact changes to the account you choose. Connection type and private assistant notes stay in this app.</string>
 </dict></plist>
 PLIST
+/usr/bin/codesign --force --sign - "$APP_PATH"
 printf '%s\n' "$APP_PATH"

@@ -7,22 +7,21 @@ Message delivery still uses Apple's messaging services and, for SMS, your carrie
 
 ## Transformation milestone — from CLI assistant to native Mac app
 
-The project now includes a runnable **SwiftUI desktop prototype** with Assistant,
-manual Plan, and Contacts workspaces. It demonstrates editable drafts, exact-plan
-review, approval invalidation, contact-conflict review, and simulated locking.
-
-This is the first native interface milestone: the desktop app uses synthetic,
-in-memory data. Real Contacts synchronization, system authentication, Python/Ollama
-integration, and desktop delivery are subsequent milestones. The existing Python
-assistant remains available separately.
+The native SwiftUI preview now has Assistant, Plan, and Contacts workspaces with system
+unlock, shared native recipients, reviewed Contacts edits, and persistent draft-only plans.
+Plan confirmations save encrypted local records before resetting the form; saved plans can
+be restored after restart and cancelled. The native interface does not yet connect to
+Python/Ollama, Messages history, or delivery. The existing Python assistant remains separate.
 
 - [Native app build and verification](desktop/README.md)
 - [Transformation roadmap](docs/DESKTOP_TRANSFORMATION_PLAN.md)
-- [V1 specification, state diagrams, and implementation backlog](docs/DESKTOP_BUILD_SPEC.md)
+- [V1 specification and backlog](docs/DESKTOP_BUILD_SPEC.md)
+- [Native storage architecture](docs/NATIVE_STORAGE_DECISION.md)
 - [Acceptance results](docs/ACCEPTANCE_RESULTS.md)
 
-Validation: **173 Python tests and 5 native core checks pass**. The SwiftUI app built
-and launched; key native review, contact-conflict, and lock flows were exercised.
+Current preview: **0.4.0 · Saved draft plans**. Thirty native check groups pass using
+synthetic data. The Python suite previously passed 173 tests. Production signing, Keychain
+upgrade/recovery behavior, real-account conflict behavior and live UI tests remain pending.
 
 ## Development status — Phase 4 implementation + approved memory
 
@@ -433,3 +432,7 @@ MIT
 The first SwiftUI milestone lives in [desktop](desktop/README.md): Assistant, manual
 Plan and Contacts screens with synthetic data, review sheets, and simulated locking.
 It does not connect to the Python engine or change real contacts/messages yet.
+
+The native integration preview now starts with macOS authentication and offers an
+explicit read-only Contacts connection. See [current native build status](desktop/README.md);
+real-device checks are pending and delivery remains disabled.

@@ -305,3 +305,19 @@ within 500 ms. Model completion latency is reported separately by hardware/model
 
 Release review records tests as pass/fail/deferred with actual platform versions. An
 unresolved hard gate blocks release; it is not converted to a passing claim by a mock.
+
+## Development preview implementation note — Contacts 0.3.0
+
+At the user's request to proceed with intertwined contacts, the development preview now
+exposes reviewed native creates/updates with explicit source selection, three-way merge,
+field-level conflict choices, refetch before save, and verification afterward. It uses
+non-unified source records and rejects ambiguous sources. Native fields and private local
+annotations have separate storage. Unknown outcomes are never automatically replayed.
+
+The installed SDK and Apple's CNSaveRequest documentation explicitly state that overlapping
+saves use last-writer-wins. The preview cannot claim atomic conflict detection across other
+processes or account servers. This implementation is evidence for B3, not satisfaction of
+the production release gate in section 6. Real-account tests, dedicated-card conflict/race
+behavior, account writability/permission recovery, and production policy remain required.
+The user-facing review and desktop README disclose this limitation. No private contacts
+were mutated in development; synthetic backend checks exercise the orchestration.

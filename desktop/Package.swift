@@ -7,7 +7,9 @@ let package = Package(
     products: [.executable(name: "MessageAssistant", targets: ["MessageAssistant"])],
     targets: [
         .target(name: "AssistantCore"),
-        .executableTarget(name: "MessageAssistant", dependencies: ["AssistantCore"]),
+        .target(name: "NativeServices", dependencies: ["AssistantCore"]),
+        .executableTarget(name: "MessageAssistant", dependencies: ["AssistantCore", "NativeServices"]),
+        .executableTarget(name: "NativeIntegrationChecks", dependencies: ["NativeServices"], path: "Tests/NativeIntegrationChecks"),
         .executableTarget(name: "AssistantCoreChecks", dependencies: ["AssistantCore"], path: "Tests/AssistantCoreTests")
     ]
 )

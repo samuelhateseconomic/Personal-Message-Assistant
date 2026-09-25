@@ -22,3 +22,6 @@ daemon.stop
 # Native desktop build products
 desktop/.build/
 desktop/.swiftpm/
+
+# Local shortcut to the built macOS app
+/Message Assistant Demo.app
