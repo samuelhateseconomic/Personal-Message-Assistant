@@ -124,11 +124,15 @@ class MessageReader:
 
     def has_access(self):
         try:
-            with self._connection() as db:
-                self._schema(db)
+            self.check_schema()
             return True
         except MessageReaderError:
             return False
+
+    def check_schema(self):
+        """Check permissions and table metadata without reading conversation rows."""
+        with self._connection() as db:
+            self._schema(db)
 
     @staticmethod
     def _limit(limit):

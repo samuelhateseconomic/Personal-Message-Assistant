@@ -5,6 +5,25 @@
 Planned: schedule messages with natural language using local Ollama inference.
 Message delivery still uses Apple's messaging services and, for SMS, your carrier.
 
+## Transformation milestone — from CLI assistant to native Mac app
+
+The project now includes a runnable **SwiftUI desktop prototype** with Assistant,
+manual Plan, and Contacts workspaces. It demonstrates editable drafts, exact-plan
+review, approval invalidation, contact-conflict review, and simulated locking.
+
+This is the first native interface milestone: the desktop app uses synthetic,
+in-memory data. Real Contacts synchronization, system authentication, Python/Ollama
+integration, and desktop delivery are subsequent milestones. The existing Python
+assistant remains available separately.
+
+- [Native app build and verification](desktop/README.md)
+- [Transformation roadmap](docs/DESKTOP_TRANSFORMATION_PLAN.md)
+- [V1 specification, state diagrams, and implementation backlog](docs/DESKTOP_BUILD_SPEC.md)
+- [Acceptance results](docs/ACCEPTANCE_RESULTS.md)
+
+Validation: **173 Python tests and 5 native core checks pass**. The SwiftUI app built
+and launched; key native review, contact-conflict, and lock flows were exercised.
+
 ## Development status — Phase 4 implementation + approved memory
 
 Implemented: foundation storage and contacts, structured contact retrieval with source
@@ -25,13 +44,38 @@ scoring remain future work. Contact retrieval checks identity,
 returns stored fields with source references, and asks for clarification on ambiguity;
 it does not verify every model-generated statement or citation.
 
-Automated checks use temporary data and mocked messaging/model calls. Real message
-delivery, live Messages database compatibility, a live Ollama conversation, and installed
-launchd operation have not been verified. No live daemon has been installed or started during development. The messaging bridge
+Automated checks use temporary data and mocked messaging/model calls. Live checks have
+verified selected direct-message history and Gemma 3 reply drafts in English and Vietnamese.
+One explicitly requested iMessage was submitted; recipient receipt was not independently
+verified. Scheduled delivery and installed launchd operation remain unverified. No live
+daemon has been installed or started during development. See
+[acceptance results](docs/ACCEPTANCE_RESULTS.md) and [test instructions](docs/ACCEPTANCE_TESTS.md).
+The messaging bridge
 supports explicit iMessage/SMS selection; it does not retry uncertain iMessage sends
 as SMS. Contact reload remains explicit.
 
 ### Read history and suggest replies
+
+Check prerequisites first:
+
+```bash
+uv run imsg doctor --config config.json --contacts contacts.json
+```
+
+`doctor` checks contacts validation, Messages table metadata, the local Ollama endpoint,
+and whether the configured model is installed. It reads no conversation rows, creates
+no config or application database, downloads no models, and performs no sends or daemon
+changes. Exit code 1 means a prerequisite failed; success does not verify inference or
+delivery. Use the same `--config` and `--contacts` options for subsequent commands.
+
+Initial preflight on 2026-09-22: personal contacts validated, Messages database could not
+be opened, and the local Ollama endpoint refused the connection. These setup blockers
+were resolved; live history and drafting passed on 2026-09-24. For a new installation,
+enable Full Disk Access for the command's
+host app and restart it; [install/open Ollama](https://github.com/ollama/ollama/blob/main/docs/macos.mdx),
+then download the configured model with `ollama pull gemma3:12b` and rerun `doctor`.
+Choose a specific contact for the read-only history and draft check. Test delivery
+remains a separate step requiring an exact reviewed recipient and message.
 
 ```bash
 # Read only the selected person's recent direct conversation
@@ -49,7 +93,7 @@ accept `--messages-db /absolute/path/chat.db` for a compatible test database. Th
 app does not copy the source or change macOS permissions. If access is denied,
 allow the actual terminal/host app in System Settings → Privacy & Security → Full
 Disk Access, restart it, then retry. `history` needs no model; `reply` uses local Ollama.
-No live conversations were accessed while implementing this feature.
+Later acceptance testing read only the explicitly selected conversation.
 
 The reader uses a read-only SQLite connection with query-only mode, bounded queries,
 complete-number matching, and direct-chat membership checks. Group chats and email-only
@@ -145,7 +189,8 @@ the next request so deleted preferences are not carried forward from previous tu
 
 Memory remains in the configured local `imsg_agent.db`, outside Git. Tests cover memory
 persistence, scope isolation, override precedence, conflicts, consent, deletion, concurrent
-edits, and tool integration. Live model adherence to drafting preferences is unverified.
+edits, and tool integration. Live English/Vietnamese language preference checks passed;
+other preference dimensions still need live evaluation.
 
 ### Scheduling and background delivery
 
@@ -312,7 +357,7 @@ uv run imsg config
 
 ## CLI Reference
 
-All commands below are implemented; live platform integration remains unverified.
+All commands below are implemented; live scheduled/background delivery remains unverified.
 `contacts` and `config` also accept `--path`. Mutation commands accept `--dry-run`;
 `chat`, send/schedule/list/cancel, and daemon commands accept `--config`.
 
@@ -382,3 +427,9 @@ All data lives at `~/.imsg-agent/`:
 ## License
 
 MIT
+
+### Native Mac interface prototype
+
+The first SwiftUI milestone lives in [desktop](desktop/README.md): Assistant, manual
+Plan and Contacts screens with synthetic data, review sheets, and simulated locking.
+It does not connect to the Python engine or change real contacts/messages yet.

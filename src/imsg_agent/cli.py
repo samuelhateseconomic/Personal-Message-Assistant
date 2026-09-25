@@ -18,6 +18,25 @@ app = typer.Typer(
 console = Console()
 
 
+@app.command("doctor")
+def doctor(
+    config: Annotated[Path | None, typer.Option("--config")] = None,
+    contacts: Annotated[Path | None, typer.Option("--contacts")] = None,
+    messages_db: Annotated[Path | None, typer.Option("--messages-db")] = None,
+):
+    """Check local prerequisites without reading messages, sending, or creating files."""
+    from imsg_agent.diagnostics import check_readiness
+
+    try:
+        result = check_readiness(load_config(config, create=False), contacts, messages_db)
+    except (OSError, ValueError):
+        console.print_json(data={"ready": False, "error": "Cannot read a valid configuration."})
+        raise typer.Exit(1) from None
+    console.print_json(data=result)
+    if not result["ready"]:
+        raise typer.Exit(1)
+
+
 @app.command("config")
 def show_config(path: Annotated[Path | None, typer.Option("--path")] = None):
     """Show validated settings; create defaults if the config file is missing."""

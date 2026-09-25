@@ -13,7 +13,7 @@ class BackendUnavailable(RuntimeError):
 
 
 class OllamaBackend:
-    def __init__(self, model="gemma3:12b", host="http://localhost:11434", client=None):
+    def __init__(self, model="gemma3:12b", host="http://localhost:11434", client=None, timeout=60):
         parsed = urlparse(host)
         local = parsed.hostname == "localhost"
         try:
@@ -28,7 +28,7 @@ class OllamaBackend:
         ):
             raise ValueError("Ollama host must be a loopback address for local contact processing")
         self.model = model
-        self.client = client or ollama.Client(host=host, timeout=60, trust_env=False)
+        self.client = client or ollama.Client(host=host, timeout=timeout, trust_env=False)
 
     def is_available(self):
         try:
@@ -94,6 +94,15 @@ class OllamaBackend:
 
     def draft_reply(self, context, instruction, preferences):
         """One draft-only model call; no tools and no write-capable agent loop."""
+        language = preferences.get("language", {}).get("value")
+        language_rule = (
+            f"\nWrite the draft itself in this output language: {language}. "
+            "This applies even when the conversation or task description is in another language. "
+            "Only an explicit request for a different output language in the user's instruction "
+            "overrides this setting. Keep JSON keys and source IDs unchanged."
+            if language
+            else ""
+        )
         schema = {
             "type": "object",
             "properties": {
@@ -114,7 +123,7 @@ class OllamaBackend:
                 "Current user instructions override approved contact/global drafting preferences. "
                 "Include the latest incoming message ID among source_ids. Source IDs must be from "
                 "the supplied messages. If an answer needs unknown facts, draft a clarifying question. "
-                "The output is a suggestion the user must review.",
+                "The output is a suggestion the user must review." + language_rule,
             },
             {
                 "role": "user",

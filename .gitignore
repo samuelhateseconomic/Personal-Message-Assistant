@@ -18,3 +18,7 @@ contacts.import-review.json
 daemon.lock
 daemon.stop
 *.log
+
+# Native desktop build products
+desktop/.build/
+desktop/.swiftpm/

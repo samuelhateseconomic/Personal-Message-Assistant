@@ -3,12 +3,23 @@
 This document maps the current project, its implemented behavior, and the remaining build phases.
 
 Phase 3 and approved memory were published in a2ff30c. Phase 4 adds read-only history and reply suggestions.
-Validation: 167 automated tests, Ruff lint/format checks, and diff checks passed. Live Ollama,
-Messages database compatibility/delivery, and installed launchd operation remain unverified.
+Validation: 173 automated tests, Ruff lint/format checks, and diff checks passed.
+Selected live history and Gemma drafting passed; scheduled delivery and installed
+launchd operation remain unverified. See docs/ACCEPTANCE_RESULTS.md for evidence and limits.
+
+## Native desktop milestone A — 2026-09-25
+
+`desktop/` now contains a runnable SwiftUI prototype with Assistant, Plan and Contacts,
+synthetic data, review sheets, approval invalidation and simulated locking. The app
+built successfully using a temporary Swift cache; five native core checks passed, and
+manual UI checks verified review/edit invalidation, contact conflict resolution, and
+lock/unlock. See [desktop/README.md](desktop/README.md). No real Contacts/authentication,
+model IPC or delivery is connected to the UI yet. Phase B remains the next integration
+milestone. The existing Python engine and its 173-test suite remain separate.
 
 ## Implementation status — Phase 4 implementation + approved memory
 
-- Phase 1: implemented and tested. Live macOS message delivery remains unverified.
+- Phase 1: implemented and tested. A live direct submission passed; recipient receipt remains unverified.
 - Phase 2: implemented: structured JSON Ollama adapter, prompt builder, validator,
   six-pattern fallback parser, bounded agent loop, eleven active tools in chat (including three memory tools), nine guardrails,
   exact-plan confirmations, and a `chat` CLI command. Reader/reply handlers are exposed
@@ -19,7 +30,7 @@ Messages database compatibility/delivery, and installed launchd operation remain
   Daemon/launchd/sending tests are mocked; live integration remains unverified.
 - Phase 4: read-only direct-message history, archived-text decoding, identity/readability
   gating, memory-aware reply suggestions, history/reply CLI, and synthetic tests implemented.
-  Live Messages/Ollama/platform verification remains outstanding.
+  Selected live Messages history and Gemma drafts verified; wider platform testing remains outstanding.
 - Approved memory: `memory/models.py`, `repository.py`, `service.py`, and `cli.py`
   implement approved preferences, opt-in draft feedback, conflict confirmations,
   management commands, and local SQLite persistence. Chat tools retrieve/save/forget
@@ -45,8 +56,17 @@ retains five complete user/answer pairs without AI summarization. IDs are not gu
 rewritten. Schemas are generated from Pydantic. The model adapter uses structured JSON
 rather than assuming native tool support. Only loopback Ollama hosts are accepted.
 
-Next milestone: live integration verification with explicitly selected conversations and a
-reviewed test-send plan. Phase 4 itself has not accessed live Messages data or sent any messages. No live daemon was installed or started during development.
+Next milestone: finish chat action routing and live scheduler/launchd verification.
+The 2026-09-24 run was draft-only at the user's request. Selected history and model
+drafting were tested; a prior separately authorized direct iMessage was submitted.
+No live daemon was installed or started during development.
+Read-only preflight on 2026-09-22 found valid personal contacts, denied Messages database
+access, and no responding Ollama service. Both blockers are now resolved.
+`imsg doctor --config config.json --contacts
+contacts.json` now repeats these prerequisite checks without reading conversation rows,
+creating files, running inference, or sending. `diagnostics.py` implements the checks;
+`test_diagnostics.py` covers unavailable services, missing models, local-only networking,
+private error suppression, and configuration reads without writes.
 Contact reload is manual and SMS fallback after uncertain submission remains omitted.
 
 Phase 3 decisions: worker wakes every second to support 30/60/120-second persisted retry
@@ -284,7 +304,7 @@ messenger_assistant_mac/
 | **2** | Agent + Tools + Guardrails | tools/*, guardrails/*, agent/* | `imsg chat` works end-to-end |
 | **3** | Scheduler + CLI + Daemon | scheduler, cli, daemon, __main__, plist | Implemented; delivery verified with mocks only |
 | **Memory** | Approved preferences and feedback | memory/*, agent/tool integration | Persistent approved preferences; no retraining |
-| **4** | Smart replies and live verification | reader, tools/reply, reply CLI, integration tests | History and suggestions implemented; live integration remains unverified |
+| **4** | Smart replies and live verification | reader, tools/reply, reply CLI, integration tests | Selected live history and drafts passed; background delivery remains unverified |
 
 
 ## Phase 4 behavior and limits
