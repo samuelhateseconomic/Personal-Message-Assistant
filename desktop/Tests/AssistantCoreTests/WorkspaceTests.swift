@@ -130,6 +130,40 @@ struct CoreChecks {
         expect(.invalidPlan) { try planner.addPlan(expires, now: expires.date.addingTimeInterval(1)) }
         check(planner.message == "Updated text", "Expired confirmation must preserve draft")
         print("PASS failed and expired confirmation retain draft without adding a plan")
-        print("11 native core checks passed")
+        let searchable = SearchRecord(fields: ["Alex Nguyễn", "Friend", "Remember birthday dinner", "hello", "+1 (202) 555-0100"],
+                                      connection: "Friend", contactID: "alex", status: "draftOnly", date: Date())
+        var filter = PlanSearch(); filter.query = "alex FRIEND birthday"
+        check(filter.matches(searchable), "Keywords should combine across name, connection and note")
+        filter.query = "nguyen 2025550100"
+        check(filter.matches(searchable), "Search handles diacritics and phone formatting")
+        filter.query = "alex missing"
+        check(!filter.matches(searchable), "Every keyword must match")
+        filter.query = "  "; filter.connections = ["friend"]; filter.contacts = ["alex"]; filter.statuses = ["draftOnly"]
+        check(filter.matches(searchable), "Filters intersect with keyword search")
+        filter.statuses = ["cancelled"]
+        check(!filter.matches(searchable), "Wrong status must exclude the plan")
+        filter = PlanSearch()
+        check(filter.matches(searchable), "Clearing filters restores results")
+        print("PASS cross-field keywords, normalization and combined filters")
+
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let today = calendar.date(from: DateComponents(year: 2026, month: 9, day: 26))!
+        var dated = searchable
+        filter.dateScope = .today; dated.date = today
+        check(filter.matches(dated, now: today, calendar: calendar), "Today includes midnight")
+        dated.date = calendar.date(byAdding: .day, value: 1, to: today)!
+        check(!filter.matches(dated, now: today, calendar: calendar), "Today excludes next midnight")
+        filter.dateScope = .nextWeek
+        dated.date = calendar.date(byAdding: .day, value: 6, to: today)!
+        check(filter.matches(dated, now: today, calendar: calendar), "Next seven days includes day six")
+        dated.date = calendar.date(byAdding: .day, value: 7, to: today)!
+        check(!filter.matches(dated, now: today, calendar: calendar), "Next seven days excludes day seven")
+        filter.dateScope = .custom; filter.start = today; filter.end = today
+        dated.date = today.addingTimeInterval(86399)
+        check(filter.matches(dated, now: today, calendar: calendar), "Custom end date includes full day")
+        filter.end = today.addingTimeInterval(-86400)
+        check(!filter.matches(dated, now: today, calendar: calendar), "Reversed date range returns no matches")
+        print("PASS today, next-seven-day and inclusive custom date bounds")
+        print("13 native core checks passed")
     }
 }

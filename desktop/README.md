@@ -3,7 +3,7 @@
 SwiftUI app for the V1 specification in ../docs/DESKTOP_BUILD_SPEC.md. Requires macOS
 14+ and a compatible Swift 6 toolchain. No third-party Swift dependencies.
 
-## Current build: Preview 0.4.0 · Saved draft plans
+## Current build: Preview 0.4.1 · Search and filters
 
 Contacts opens the Mac Contacts panel by default. Choose Connect / refresh and complete
 the system permission prompt yourself. The app does not request access until Connect.
@@ -69,14 +69,14 @@ IMSG_BUILD_DIR="$(mktemp -d /private/tmp/imsg-native-build.XXXXXX)" ./desktop/sc
 ```
 
 Save unfinished edits and quit the running app with Command-Q before reopening. Check the
-lock screen for **Preview 0.4.0 · Saved draft plans**. The build is ad-hoc signed, not notarized;
+lock screen for **Preview 0.4.1 · Search and filters**. The build is ad-hoc signed, not notarized;
 permission persistence across rebuilds is not guaranteed. The visible project-root app
 shortcut points to the hidden build folder and is ignored by Git.
 
 ## Verification
 
 - Build and ad-hoc signature verification pass.
-- Eleven core state checks and nineteen native integration check groups pass. Sync checks use
+- Thirteen core state checks and nineteen native integration check groups pass. Sync checks use
   an injected synthetic backend, never the real address book. They cover merge/conflict,
   stale review, lock rejection, verified create/update, duplicate dispatch, uncertain
   result handling and preservation of annotations when linking an app-only contact.
@@ -160,3 +160,16 @@ Six synthetic storage check groups verify encryption/restart, idempotent cancell
 locked access, missing key and write-failure behavior, corruption/schema rejection, and
 ciphertext-copy restore/wrong-key rejection. No real Keychain item is created by these tests.
 See ../docs/NATIVE_STORAGE_DECISION.md for production decisions and remaining gates.
+
+### Combined keyword search and filters — 0.4.1
+
+Saved plans and recipient selection match all keywords across name, connection type,
+private app note, and available contact fields; saved plans also search message text.
+Filters narrow these results. Saved plans offer multi-select connection/contact/status
+filters plus today, next seven days (including today), and an inclusive custom date range.
+Recipient selection offers connection filters. Filter chips can be removed individually;
+Clear all resets the query and filters. Search never changes a selection or sends data to AI.
+Notes are searched locally but never printed in previews. Missing profile data is reported.
+
+See ../docs/UI_REFINEMENT_PLAN.md for the full agreed redesign and remaining work. Matcher
+and boundary tests are automated; UI/device validation for these new controls is pending.

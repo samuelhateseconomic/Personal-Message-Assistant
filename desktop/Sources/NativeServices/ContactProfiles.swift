@@ -56,6 +56,7 @@ public struct ContactProfileStore {
                                                 attributes: [.posixPermissions: 0o700])
         try JSONEncoder().encode(profiles).write(to: url, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        NotificationCenter.default.post(name: .contactProfilesChanged, object: nil)
     }
     public func create(_ profile: ContactProfile) throws -> String {
         let id = "local:" + UUID().uuidString

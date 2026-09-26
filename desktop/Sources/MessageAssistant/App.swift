@@ -38,7 +38,8 @@ struct WorkspaceView: View {
     @StateObject private var nativeContacts = NativeContacts()
     @State private var contactSource = "Mac Contacts"
     @State private var workspace = Workspace(requiresNativeRecipient: true)
-    @State private var recipientSearch = ""
+    @State private var recipientFilter = PlanSearch()
+    @StateObject private var profileIndex = ProfileSearchIndex()
     @State private var recipientContactID: String?
     @State private var destination: Destination? = .assistant
     @State private var review: Review?
@@ -59,7 +60,7 @@ struct WorkspaceView: View {
                         .disabled(session.authenticating)
                         .buttonStyle(.borderedProminent)
                     Text("Use the system prompt. This app never collects your password.").font(.caption)
-                    Text("Preview 0.4.0 · Saved draft plans").font(.caption).foregroundStyle(.secondary)
+                    Text("Preview 0.4.1 · Search and filters").font(.caption).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 NavigationSplitView {
@@ -71,7 +72,7 @@ struct WorkspaceView: View {
                 } detail: {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 22) {
-                            Text("Preview 0.4.0 · Delivery disabled")
+                            Text("Preview 0.4.1 · Delivery disabled")
                                 .font(.caption).foregroundStyle(.secondary)
                             switch destination ?? .assistant {
                             case .assistant: assistant
@@ -114,7 +115,7 @@ struct WorkspaceView: View {
                         do {
                             guard validateRecipient() else { review = nil; return }
                             try plans.confirm(snapshot, workspace: &workspace)
-                            recipientContactID = nil; recipientSearch = ""; language = "English"
+                            recipientContactID = nil; recipientFilter = PlanSearch(); language = "English"
                             notice = "Plan saved on this Mac. The form is ready for a new plan."
                             planAddedPending = true
                         }
@@ -130,6 +131,9 @@ struct WorkspaceView: View {
         } message: {
             Text("Your plan is saved on this Mac, and the form has been reset. Delivery remains disabled; nothing has been scheduled or sent.")
         }
+        .onReceive(NotificationCenter.default.publisher(for: .contactProfilesChanged)) { _ in
+            if session.unlocked { profileIndex.refresh() }
+        }
         .onChange(of: nativeContacts.isConnected) { _, _ in reconcileNativeContacts() }
         .onChange(of: nativeContacts.loading) { _, loading in
             if !loading { reconcileNativeContacts() }
@@ -139,20 +143,20 @@ struct WorkspaceView: View {
         }
         .onChange(of: destination) { _, _ in notice = "" }
         .onAppear {
-            if session.unlocked { workspace.simulateUnlock(); plans.refresh() } else { workspace.lock(); plans.lock() }
+            if session.unlocked { workspace.simulateUnlock(); plans.refresh(); profileIndex.refresh() } else { workspace.lock(); plans.lock(); profileIndex.clear() }
         }
         .onDisappear { session.lock() }
         .onChange(of: session.unlocked) { _, unlocked in
-            if unlocked { workspace.simulateUnlock(); plans.refresh() }
+            if unlocked { workspace.simulateUnlock(); plans.refresh(); profileIndex.refresh() }
             else {
-                review = nil; planAddedPending = false; showPlanSuccess = false; workspace.lock(); plans.lock()
-                nativeContacts.clear(); recipientContactID = nil; recipientSearch = ""
+                review = nil; planAddedPending = false; showPlanSuccess = false; workspace.lock(); plans.lock(); profileIndex.clear()
+                nativeContacts.clear(); recipientContactID = nil; recipientFilter = PlanSearch()
             }
         }
     }
 
     private var contactPicker: some View {
-        RecipientPicker(contacts: nativeContacts, search: $recipientSearch, contactID: $recipientContactID,
+        RecipientPicker(contacts: nativeContacts, metadata: profileIndex, filter: $recipientFilter, contactID: $recipientContactID,
                         selected: workspace.selectedRecipient, choose: { recipient in
             workspace.selectRecipient(recipient); review = nil
             notice = "Recipient changed. Choose a destination before drafting."
@@ -161,6 +165,7 @@ struct WorkspaceView: View {
     private func connectContacts() {
         Task {
             guard session.unlocked else { return }
+            profileIndex.refresh()
             await nativeContacts.load(requestPermission: true)
         }
     }
@@ -255,39 +260,7 @@ struct WorkspaceView: View {
                 Button("Cancel plan") { workspace.cancel(); notice = "Demo plan cancelled." }
             }
             Divider()
-            HStack {
-                Text("Saved plans").font(.headline)
-                Spacer()
-                Button("Refresh saved plans") { plans.refresh() }
-            }
-            Text("Encrypted on this Mac. These are draft-only plans; delivery is disabled.")
-                .font(.caption).foregroundStyle(.secondary)
-            if !plans.errorMessage.isEmpty {
-                Label(plans.errorMessage, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
-            }
-            if plans.ready && plans.plans.isEmpty {
-                Text("No saved plans yet.").foregroundStyle(.secondary)
-            }
-            ForEach(plans.plans) { record in
-                let item = record.snapshot
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text(item.recipient.name).font(.subheadline.bold())
-                        Spacer()
-                        Text(record.status == .cancelled ? "Cancelled" : "Draft only").font(.caption)
-                    }
-                    Text(item.recipient.address).font(.caption)
-                    Text(item.message)
-                    Text(item.date.formatted(date: .abbreviated, time: .shortened)).font(.caption)
-                    if record.status != .cancelled {
-                        Button("Cancel saved plan") {
-                            do { try plans.cancel(record.id); notice = "Saved plan cancelled." }
-                            catch { notice = "Could not cancel this plan. Refresh saved plans and retry." }
-                        }
-                    }
-                }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-            }
+            SavedPlansView(plans: plans, metadata: profileIndex, contacts: nativeContacts.rows, notice: $notice)
         }
     }
     private var contacts: some View {
@@ -312,7 +285,8 @@ struct WorkspaceView: View {
             Button(nativeContacts.loading ? "Loading…" : "Connect / refresh Mac Contacts") {
                 Task {
                     guard session.unlocked else { return }
-                    await nativeContacts.load(requestPermission: true)
+                    profileIndex.refresh()
+            await nativeContacts.load(requestPermission: true)
                 }
             }.disabled(nativeContacts.loading)
             SyncedContactsView(session: session, native: nativeContacts)

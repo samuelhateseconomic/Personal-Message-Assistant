@@ -4,13 +4,21 @@ import NativeServices
 
 struct RecipientPicker: View {
     @ObservedObject var contacts: NativeContacts
-    @Binding var search: String
+    @ObservedObject var metadata: ProfileSearchIndex
+    @Binding var filter: PlanSearch
     @Binding var contactID: String?
     let selected: Recipient?
     let choose: (Recipient?) -> Void
     let connect: () -> Void
 
     private var current: NativeContactRow? { contacts.rows.first { $0.id == contactID } }
+    private var matches: [NativeContactRow] {
+        contacts.rows.filter { row in
+            let profile = metadata.profiles["mac:" + row.id]
+            return filter.matches(SearchRecord(fields: [row.name, profile?.name ?? "", profile?.connection ?? "", profile?.note ?? ""] + row.phones + row.emails,
+                                               connection: profile?.connection ?? "", contactID: row.id))
+        }
+    }
     static func endpoints(_ row: NativeContactRow) -> [Recipient] {
         let values = row.phones.map { Recipient(nativeID: row.id, name: row.name, kind: .phone, address: $0) }
             + row.emails.map { Recipient(nativeID: row.id, name: row.name, kind: .email, address: $0) }
@@ -26,12 +34,14 @@ struct RecipientPicker: View {
                     .disabled(contacts.loading)
             }
             if contacts.isConnected {
-                TextField("Search recipient by name, phone or email", text: $search).textFieldStyle(.roundedBorder)
+                SearchFilters(filter: $filter,
+                              connections: SearchFilters.connectionChoices(contacts.rows.map { metadata.profiles["mac:" + $0.id]?.connection ?? "" }))
+                Text("\(matches.count) matching contacts · Keywords also search private notes locally.").font(.caption).foregroundStyle(.secondary)
+                if !metadata.errorMessage.isEmpty { Text(metadata.errorMessage).font(.caption).foregroundStyle(.secondary) }
+                if matches.isEmpty { Text("No matching contacts. Try fewer keywords or clear a filter.").foregroundStyle(.secondary) }
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(contacts.rows.filter { row in
-                            search.isEmpty || ([row.name] + row.phones + row.emails).contains { $0.localizedCaseInsensitiveContains(search) }
-                        }) { row in
+                        ForEach(matches) { row in
                             Button {
                                 guard contactID != row.id else { return }
                                 contactID = row.id

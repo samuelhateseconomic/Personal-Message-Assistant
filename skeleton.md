@@ -7,7 +7,7 @@ Validation: 173 automated tests, Ruff lint/format checks, and diff checks passed
 Selected live history and Gemma drafting passed; scheduled delivery and installed
 launchd operation remain unverified. See docs/ACCEPTANCE_RESULTS.md for evidence and limits.
 
-## Current native desktop preview — 0.4.0
+## Current native desktop preview — 0.4.1
 
 `desktop/` contains SwiftUI Assistant, Plan and Contacts workspaces with LocalAuthentication,
 shared searchable Apple Contacts recipients, reviewed native contact saves, and per-field
@@ -17,7 +17,7 @@ The Keychain key stays outside the repository; ciphertext is stored in Applicati
 NativeServices is the sole plan-store writer, with authorization checks and serialized file
 updates. No Python helper, real message history, model IPC or delivery is connected yet.
 
-Thirty native synthetic check groups pass (eleven core, nineteen integration), including
+Thirty-two native synthetic check groups pass (thirteen core, nineteen integration), including
 restart, corruption/key-loss handling, cancellation and duplicate-save rejection. The
 existing Python engine and its previously passing 173-test suite remain separate.
 B1/B2/B3 device/signing checks, final B4 key/recovery proof, and production C1/C2/C3 gates
@@ -375,3 +375,12 @@ Confirm persists before composer reset; cancellation persists; lock clears the l
 Missing keys, corrupt ciphertext and unknown schemas fail closed without replacing existing
 data. Older Python databases/jobs are not imported or activated. Thirty native check groups
 pass; real Keychain access/upgrade, alert UI and cross-restart device verification are pending.
+
+### UI refinement, first increment — 0.4.1
+
+Plans and recipient selection now share cross-field keyword semantics for names,
+connections and private notes. Saved plans additionally search messages and support contact,
+status and date filters. Removable chips, clear-all, counts, partial-search errors and
+no-match states are implemented. Notes are not shown in result previews. The detailed
+remaining redesign is in docs/UI_REFINEMENT_PLAN.md. Thirty-two native check groups pass;
+real UI/layout validation remains pending. Sending is still disabled.

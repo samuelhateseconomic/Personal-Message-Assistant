@@ -16,10 +16,11 @@ Python/Ollama, Messages history, or delivery. The existing Python assistant rema
 - [Native app build and verification](desktop/README.md)
 - [Transformation roadmap](docs/DESKTOP_TRANSFORMATION_PLAN.md)
 - [V1 specification and backlog](docs/DESKTOP_BUILD_SPEC.md)
+- [UI refinement plan](docs/UI_REFINEMENT_PLAN.md)
 - [Native storage architecture](docs/NATIVE_STORAGE_DECISION.md)
 - [Acceptance results](docs/ACCEPTANCE_RESULTS.md)
 
-Current preview: **0.4.0 · Saved draft plans**. Thirty native check groups pass using
+Current preview: **0.4.1 · Search and filters**. Thirty-two native check groups pass using
 synthetic data. The Python suite previously passed 173 tests. Production signing, Keychain
 upgrade/recovery behavior, real-account conflict behavior and live UI tests remain pending.
 
