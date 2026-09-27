@@ -7,7 +7,7 @@ Validation: 173 automated tests, Ruff lint/format checks, and diff checks passed
 Selected live history and Gemma drafting passed; scheduled delivery and installed
 launchd operation remain unverified. See docs/ACCEPTANCE_RESULTS.md for evidence and limits.
 
-## Current native desktop preview — 0.4.1
+## Current native desktop preview — 0.10.0
 
 `desktop/` contains SwiftUI Assistant, Plan and Contacts workspaces with LocalAuthentication,
 shared searchable Apple Contacts recipients, reviewed native contact saves, and per-field
@@ -15,9 +15,11 @@ conflict choices. Plan confirmation now persists an encrypted draft-only record 
 resetting the composer. Saved plans restore on unlock/restart and support cancellation.
 The Keychain key stays outside the repository; ciphertext is stored in Application Support.
 NativeServices is the sole plan-store writer, with authorization checks and serialized file
-updates. No Python helper, real message history, model IPC or delivery is connected yet.
+updates. The Assistant now connects directly to local Gemma 3 for structured contact/plan
+proposals, native keyword retrieval and reviewed action routing. No Python helper, real
+message history or delivery is connected yet.
 
-Thirty-two native synthetic check groups pass (thirteen core, nineteen integration), including
+Eighty-three native synthetic check groups pass (thirteen core, seventy integration), including
 restart, corruption/key-loss handling, cancellation and duplicate-save rejection. The
 existing Python engine and its previously passing 173-test suite remain separate.
 B1/B2/B3 device/signing checks, final B4 key/recovery proof, and production C1/C2/C3 gates
@@ -384,3 +386,114 @@ status and date filters. Removable chips, clear-all, counts, partial-search erro
 no-match states are implemented. Notes are not shown in result previews. The detailed
 remaining redesign is in docs/UI_REFINEMENT_PLAN.md. Thirty-two native check groups pass;
 real UI/layout validation remains pending. Sending is still disabled.
+
+### Plans navigation refinement — 0.4.2
+
+Saved plans now use a list/detail view and a separate composer. Success returns to the
+selected saved plan. Back/new-plan and recipient changes protect typed drafts; the fake
+delivery pause control is removed. Search/filter/selection state survives composer
+navigation. Saved-plan editing, remaining UI refinement and device accessibility tests
+are not complete. Delivery stays disabled; persistence schema is unchanged.
+
+### Assistant scope correction — planning only, 2026-09-26
+
+The requested Assistant is a conversational planner with source-backed contact retrieval,
+prompt-to-contact creation, reviewed contact edit/delete and plan create/edit/cancel. The
+current desktop does not implement that full feature set. Existing Python contact tools
+only retrieve; native deletion and stored-plan editing are missing. The revised plan is
+docs/ASSISTANT_COMPLETION_PLAN.md and supersedes the earlier narrow Assistant/deletion scope.
+Next: shared native action contracts, then revisioned plan editing and migration. No feature
+implementation, deletion, sending, or private-data modification occurred in this planning pass.
+
+### Assistant completion, first implementation slice — 0.5.0
+
+Plan create/update/cancel now share typed proposals and native-issued expiring review.
+Saved-plan editing retains stable identity and creation time, increments revision and
+requires exact before/after confirmation. Durable receipts prevent duplicate operation
+effects; stale edits cannot overwrite cancellation. Legacy encrypted schema 1 upgrades on
+first write only after preserving its ciphertext backup. Synthetic migration, rollback-copy,
+collision/expiry/lock/race tests pass. This is steps 1 (plan actions) and 2 of the revised
+completion plan; contact deletion and conversational AI are still pending. Delivery is off.
+
+
+### Assistant completion, conversational slice — 0.6.0
+
+- `NativeServices/AssistantPlanner.swift`: bounded local Ollama JSON adapter, fact-grounded
+  extraction, sourced keyword retrieval, cancellation and late-result rejection. No mutation tools.
+- `MessageAssistant/AssistantPanel.swift`: prompt/clarification/candidate/source/proposal UI;
+  routes contact and plan actions through existing native editors and exact reviews.
+- `NativeServices/ContactDeletion.swift`: source-specific reviewed deletion, saved-plan
+  dependency gate, encrypted write-ahead receipt and recovery without replay.
+- Native and app-only contact deletion are available manually. Contact create/edit reviews
+  now expire and reject foreign/revoked previews. Saved-plan edits preserve IDs/revisions.
+
+The managed Python bridge proposed earlier is replaced for this slice by direct, bounded
+native loopback inference. This reduces packaging and authority boundaries; the legacy CLI
+and all sending tools remain separate. Current behavior is one reviewed action at a time.
+Private retrieved notes are displayed locally, not supplied to the model. Multi-step chains,
+Messages retrieval, approved-memory UI and production/device proof remain outstanding.
+
+
+### Assistant completion, dependent workflow slice — 0.7.0
+
+`NativeServices/AssistantWorkflow.swift` coordinates create-contact → draft-plan in the
+unlocked session. It has no mutation authority. Typed native callbacks bind the actual
+saved contact ID/account, preserve partial success, gate annotation cleanup and unblock the
+second separately reviewed step. Unknown native writes never automatically retry. Exact
+endpoint revalidation and plan receipts still apply. Lock/end clears pending coordination,
+not saved contacts/plans. Other multi-step chains and durable workflow resume remain pending.
+
+
+### Assistant completion, selected-context drafting slice — 0.8.0
+
+`ScopedAssistantDraft.swift` adds a bounded message-only model interface. After an explicit
+native contact selection, `ScopedDraftView.swift` previews name plus optional connection,
+birthday and private note. Generation sends only the displayed facts and user purpose to
+fixed loopback Ollama. No action executor, native IDs, account label or endpoint fields enter
+that request; text already inside a selected note remains included and visible in preview.
+
+`ScopedDraftSession` revalidates sources before/after inference and rejects cancelled or stale
+results. The view rechecks before routing edited text into the existing plan editor. Normal
+native recipient/date/review/save gates remain in force. This is opt-in per generation;
+retrieved notes do not enter normal action classification or extraction, cannot grant action
+authority, and are not automatically reused as memory. Generated claims remain suggestions.
+Six additional synthetic check groups and two live Gemma fixtures cover field minimization,
+unknown/oversized context, note instructions, strict message-only output, stale identity and
+profile gates, offline errors, cancellation and late completion. Durable workflows and
+Messages/approved-memory integration remain open.
+
+
+### Assistant completion, approved style memory slice — 0.9.0
+
+`WritingPreferences.swift` implements fixed tone/length/emoji choices, an encrypted
+revisioned store using a separate Keychain service, and a native controller for explicit
+save/reload/forget. `WritingPreferencesView.swift` adds the Preferences sidebar panel.
+`ScopedDraftContext` accepts an optional saved record only after a per-draft opt-in and
+previews its style alongside selected facts; only style values enter inference. Native
+revision checks before/after inference and before opening the plan reject stale memory.
+Lock clears in-memory preferences; unlock reloads the encrypted record. Forget keeps an
+empty revision tombstone to prevent stale resurrection. No model can save preferences.
+
+This is global approved writing style, not passive learning, contact-specific memory, or
+integration with the Python memory store. Seven new native check groups cover encrypted
+restart persistence, conflicts, forget, keys/corruption, controller outcomes, bounded model
+input and forget-during-inference. Three live context/style Gemma fixtures passed. Actual
+Keychain/authenticated UI acceptance, durable workflows and the Messages bridge remain open.
+
+
+### Assistant completion, durable contact-save slice — 0.10.0
+
+`ContactSaveRecovery.swift` adds an encrypted write-ahead journal and coordinator around the
+existing issued/expiring `ContactSyncService` review. `SyncedContactsView` routes native
+create/edit through it and finishes local annotations separately. `ContactSaveRecoveryView`
+shows pending receipts after reopen, performs read-only exact-card checks, retries local
+notes, or explicitly dismisses recovery without asserting success. No recovery path invokes
+native create/update. The Assistant's matching current-session recovery uses the same ledger.
+
+States: dispatched → verified → complete; a known pre-write failure becomes notSaved, and
+explicit user acknowledgement becomes dismissed. Uncertain outcomes remain dispatched and
+block new native saves. A creation with no durable native ID needs explicit source-card
+selection and full field/account verification. Expected local annotations/source profiles
+protect newer edits; native preflight/readback still cannot eliminate external final-save
+races in the Contacts API. Receipt persistence survives restart; whole-workflow and unsaved
+composer restoration do not. Eight additional synthetic check groups exercise these paths.

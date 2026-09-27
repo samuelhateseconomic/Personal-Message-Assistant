@@ -5,7 +5,19 @@ import NativeServices
 struct SyncedContactsView: View {
     @ObservedObject var session: NativeSession
     @ObservedObject var native: NativeContacts
+    @ObservedObject var plans: PlanRepository
+    var initialProposal: AssistantContactProposal? = nil
+    var proposalConsumed: () -> Void = {}
+    var onResult: (String) -> Void = { _ in }
+    var onWorkflowEvent: (ContactWorkflowEvent) -> Void = { _ in }
+    @State private var activeProposalID: UUID?
     @State private var service: ContactSyncService?
+    @State private var saveCoordinator: ContactSaveCoordinator?
+    @State private var saveReceiptID: UUID?
+    @State private var recoveryRevision = UUID()
+    @State private var deletionService: ContactDeletionService?
+    @State private var deleteReview: ContactDeletionReview?
+    @State private var pendingDeletes: [ContactDeletionReceipt] = []
     @State private var accounts: [ContactAccount] = []
     @State private var search = ""
     @State private var showEditor = false
@@ -14,12 +26,15 @@ struct SyncedContactsView: View {
     @State private var accountID = ""
     @State private var connection = ""
     @State private var note = ""
+    @State private var originalProfile: ContactProfile?
+    @State private var sourceProfile: ContactProfile?
     @State private var localSource: String?
     @State private var localProfiles: [String: ContactProfile] = [:]
     @State private var review: ContactSaveReview?
     @State private var status = ""
     @State private var error = ""
     @State private var editorError = ""
+    @State private var editorNotice = ""
     @State private var uncertain = false
     @State private var conflictFields: [String] = []
     @State private var conflictCurrent: ContactSnapshot?
@@ -43,6 +58,22 @@ struct SyncedContactsView: View {
                 .font(.caption).foregroundStyle(.secondary)
             if !status.isEmpty { Label(status, systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
             if !error.isEmpty { Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red) }
+            if let saveCoordinator {
+                ContactSaveRecoveryView(coordinator: saveCoordinator, native: native) { receipt in
+                    if let proposal = receipt.proposalID, let saved = receipt.saved {
+                        onWorkflowEvent(.verified(proposal, saved)); onWorkflowEvent(.annotationsSaved(proposal))
+                    }
+                    onResult("Recovered local contact notes successfully.")
+                    Task { await native.load(requestPermission: false) }
+                }.id(recoveryRevision)
+            }
+            ForEach(pendingDeletes) { receipt in
+                HStack {
+                    Text("\(receipt.name) · \(receipt.account.name) · \(receipt.state == .deleted ? "local cleanup pending" : "deletion unconfirmed")")
+                    Spacer()
+                    Button(receipt.state == .deleted ? "Retry local cleanup" : "Check result") { recoverDelete(receipt.id) }
+                }.font(.callout)
+            }
             TextField("Search name, phone or email", text: $search).textFieldStyle(.roundedBorder)
             LazyVStack(alignment: .leading) {
                 ForEach(native.rows.filter { row in
@@ -56,21 +87,34 @@ struct SyncedContactsView: View {
             }
         }
         .onAppear {
-            service = ContactSyncService(isUnlocked: { session.unlocked })
+            let nativeService = ContactSyncService(isUnlocked: { session.unlocked })
+            service = nativeService
+            saveCoordinator = ContactSaveCoordinator(contacts: nativeService, isUnlocked: { session.unlocked })
+            deletionService = ContactDeletionService(plans: plans, isUnlocked: { session.unlocked })
             refreshAccounts()
+            refreshDeletions()
+            receiveProposal()
         }
+        .onChange(of: initialProposal?.id) { _, _ in receiveProposal() }
         .onChange(of: native.loading) { _, loading in if !loading { refreshAccounts() } }
         .onChange(of: session.unlocked) { _, unlocked in
-            if !unlocked { showEditor = false; clearEditor(); localProfiles = [:]; accounts = []; service = nil }
+            if !unlocked {
+                saveCoordinator = nil; saveReceiptID = nil
+                service?.invalidate()
+                deletionService?.invalidate(); deletionService = nil; pendingDeletes = []
+                showEditor = false; clearEditor(); localProfiles = [:]; accounts = []; service = nil
+            }
         }
         .sheet(isPresented: $showEditor, onDismiss: { clearEditor() }) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(review == nil ? (base == nil ? "New contact" : "Edit contact") : "Review Apple Contacts save").font(.title2)
+                    Text(deleteReview != nil ? "Review contact deletion" : (review == nil ? (base == nil ? "New contact" : "Edit contact") : "Review Apple Contacts save")).font(.title2)
                     if !editorError.isEmpty {
                         Label(editorError, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
                     }
-                    if let current = conflictCurrent { conflictPanel(current) }
+                    if !editorNotice.isEmpty { Text(editorNotice).font(.caption).foregroundStyle(.secondary) }
+                    if let deleteReview { deletionPanel(deleteReview) }
+                    else if let current = conflictCurrent { conflictPanel(current) }
                     else if let review { reviewPanel(review) }
                     else if savedNative != nil {
                         Text("Apple Contacts has been saved. Your local connection type and notes still need saving.")
@@ -121,15 +165,99 @@ struct SyncedContactsView: View {
                 Button("Cancel") { showEditor = false }.keyboardShortcut(.cancelAction)
                 if base != nil {
                     Button("Reload current contact") {
-                        guard let id = base?.id else { return }; edit(id)
+                        guard let id = base?.id else { return }
+                        let proposal = activeProposalID; edit(id); activeProposalID = proposal
                     }.help("Discard this edit and load the current Apple Contacts record")
                 }
                 Spacer()
                 Button("Review save") { prepareReview() }.buttonStyle(.borderedProminent)
                     .disabled(uncertain || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (base == nil && accountID.isEmpty))
             }
-            if uncertain { Text("Close this form and inspect Apple Contacts before starting another save.").font(.caption) }
+            if uncertain { Text("Close this form and use Contact saves needing recovery. No native save will be repeated.").font(.caption) }
+            if let base {
+                Divider()
+                Button("Review deletion from Apple Contacts…", role: .destructive) { prepareDelete(base.id) }
+                    .disabled(uncertain)
+            }
         }.textFieldStyle(.roundedBorder)
+    }
+    private func deletionPanel(_ value: ContactDeletionReview) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(value.target.snapshot.fields.name).font(.headline)
+            Text("Account: \(value.account.name)")
+            Text(value.target.snapshot.fields.phones.joined(separator: "\n"))
+            Text(value.target.snapshot.fields.emails.joined(separator: "\n"))
+            if let profile = value.profile {
+                Text("Local connection to remove: \(profile.connection.isEmpty ? "None" : profile.connection)")
+                Text("Local note to remove: \(profile.note.isEmpty ? "None" : profile.note)")
+            }
+            Text("No active saved drafts refer to this card. Cancelled plans keep their historical snapshots.")
+            Text("This deletes the entire source card, including fields not displayed here, and its saved local annotations. It may sync to other devices through this account. This app cannot undo it. Unsaved form edits are not included.")
+            Text("Review expires in two minutes. Contacts changes require a new review; concurrent external writes can still race the final save.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Back") { deleteReview = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Delete this contact", role: .destructive) { confirmDelete(value) }.buttonStyle(.borderedProminent)
+            }
+        }
+    }
+    private func prepareDelete(_ id: String) {
+        do { deleteReview = try deletionService?.prepare(id); editorError = "" }
+        catch { editorError = deletionMessage(error) }
+    }
+    private func confirmDelete(_ value: ContactDeletionReview) {
+        do {
+            guard let deletionService else { return }
+            try deletionService.confirm(value)
+            status = "Contact deleted successfully from Apple Contacts and local annotations removed."
+            onResult(status)
+            showEditor = false
+        } catch {
+            deleteReview = nil; editorError = deletionMessage(error)
+            if let value = error as? ContactDeletionError, value == .interrupted || value == .cleanup { uncertain = true }
+        }
+        refreshDeletions()
+        Task { await native.load(requestPermission: false) }
+    }
+    private func refreshDeletions() {
+        do { pendingDeletes = try deletionService?.pending() ?? [] }
+        catch { self.error = deletionMessage(error) }
+    }
+    private func recoverDelete(_ id: UUID) {
+        do {
+            guard let deletionService else { return }
+            let result = try deletionService.recover(id)
+            status = result == .complete ? "Deletion verified and local cleanup completed."
+                : "The contact is still present. Nothing was retried; open it for a fresh review if you still want to delete it."
+            onResult(status)
+            error = ""
+        } catch { self.error = deletionMessage(error) }
+        refreshDeletions()
+        Task { await native.load(requestPermission: false) }
+    }
+    private func deletionMessage(_ value: any Error) -> String {
+        if let value = value as? ContactDeletionError { return value.localizedDescription }
+        if let value = value as? ContactSyncError { return value.localizedDescription }
+        if let value = value as? PlanStorageError { return value.localizedDescription }
+        return ContactDeletionError.storage.localizedDescription
+    }
+    private func receiveProposal() {
+        guard let proposal = initialProposal, service != nil else { return }
+        defer { proposalConsumed() }
+        do {
+            if let target = proposal.target {
+                guard try service?.fetch(target.id) == target else { throw ContactSyncError.changed }
+                edit(target.id)
+                guard base != nil else { return }
+                if proposal.intent.action == .deleteContact { prepareDelete(target.id); return }
+            } else { begin() }
+            draft = try proposal.intent.applying(to: draft)
+            if let value = proposal.intent.connection { connection = value }
+            if let value = proposal.intent.note { note = value }
+            activeProposalID = proposal.id
+            editorNotice = "Proposal from your request. Existing numbers are preserved; edit lines here if you intend to replace or remove one. Review all details before saving."
+        } catch { self.error = (error as? LocalizedError)?.errorDescription ?? "The proposal could not be opened. Retrieve the contact again." }
     }
     private func reviewPanel(_ snapshot: ContactSaveReview) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -145,6 +273,7 @@ struct SyncedContactsView: View {
             Text("Private note: \(note.isEmpty ? "None" : note)")
             Text("All listed numbers and emails will be saved. Removed lines are removed from this card. Notes and connection stay local. Concurrent edits are rechecked before saving; Apple does not provide an atomic conflict guarantee.")
                 .font(.caption).foregroundStyle(.secondary)
+            Text("Review expires in two minutes.").font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button("Back") { review = nil }.keyboardShortcut(.cancelAction)
                 Spacer()
@@ -213,8 +342,9 @@ struct SyncedContactsView: View {
         } catch { editorError = "Additional fields changed. Return to editing and review again." }
     }
     private func clearEditor() {
-        base = nil; draft = ContactFields(); accountID = ""; connection = ""; note = ""; localSource = nil
-        review = nil; editorError = ""; uncertain = false; savedNative = nil
+        saveReceiptID = nil; recoveryRevision = UUID(); originalProfile = nil; sourceProfile = nil
+        base = nil; draft = ContactFields(); accountID = ""; connection = ""; note = ""; localSource = nil; activeProposalID = nil
+        review = nil; deleteReview = nil; editorError = ""; editorNotice = ""; uncertain = false; savedNative = nil
         conflictCurrent = nil; conflictFields = []; conflictChoices = [:]; conflictEdited = ContactFields()
     }
     private func refreshAccounts() {
@@ -229,6 +359,7 @@ struct SyncedContactsView: View {
     private func begin(localID: String? = nil) {
         clearEditor(); status = ""; localSource = localID
         if let localID, let profile = localProfiles[localID] {
+            sourceProfile = profile
             draft.givenName = profile.name; draft.phones = profile.phone.isEmpty ? [] : [profile.phone]
             draft.emails = profile.email.isEmpty ? [] : [profile.email]
             draft.birthday = profile.birthday.map { Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: $0) }
@@ -240,7 +371,7 @@ struct SyncedContactsView: View {
         do {
             guard let record = try service?.fetch(id) else { return }
             let local = try profiles.load()["mac:" + id]
-            clearEditor(); base = record; draft = record.fields; accountID = record.accountID
+            clearEditor(); originalProfile = local; base = record; draft = record.fields; accountID = record.accountID
             connection = local?.connection ?? ""; note = local?.note ?? ""
             showEditor = true; status = ""
         } catch { self.error = "Could not open this source contact. Refresh the connection or edit it in Apple Contacts." }
@@ -266,23 +397,40 @@ struct SyncedContactsView: View {
     }
     private func commit(_ snapshot: ContactSaveReview) {
         do {
-            guard let saved = try service?.commit(snapshot) else { return }
+            guard let saveCoordinator else { return }
+            if let id = activeProposalID {
+                onWorkflowEvent(.attempting(id, ContactProfile(name: snapshot.fields.name, connection: connection, note: note), originalProfile, localSource))
+            }
+            let receipt = try saveCoordinator.commit(snapshot,
+                profile: ContactProfile(name: snapshot.fields.name, connection: connection, note: note),
+                expectedProfile: originalProfile, localSource: localSource, expectedSource: sourceProfile, proposalID: activeProposalID)
+            guard let saved = receipt.saved else { throw ContactSaveRecoveryError.uncertain }
+            saveReceiptID = receipt.id; recoveryRevision = UUID()
+            if let id = activeProposalID { onWorkflowEvent(.verified(id, saved)) }
             savedNative = saved; review = nil
             saveAnnotations()
+        } catch let error as ContactSaveRecoveryError {
+            review = nil; recoveryRevision = UUID(); editorError = error.localizedDescription
+            uncertain = error == .storage || error == .uncertain
+            if let id = activeProposalID { onWorkflowEvent(.failed(id, uncertain: uncertain)) }
         } catch let error as ContactSyncError {
             review = nil; editorError = error.localizedDescription
             if case .uncertain = error { uncertain = true }
+            if let id = activeProposalID { onWorkflowEvent(.failed(id, uncertain: uncertain)) }
         } catch {
             review = nil; uncertain = true
+            if let id = activeProposalID { onWorkflowEvent(.failed(id, uncertain: true)) }
             editorError = "Apple Contacts did not confirm the save. Your entries are kept. Check permission, account writability, and the contact in Apple Contacts before trying again."
         }
     }
     private func saveAnnotations() {
-        guard session.unlocked, let saved = savedNative else { return }
+        guard session.unlocked, savedNative != nil, let saveReceiptID, let saveCoordinator else { return }
         do {
-            let value = ContactProfile(name: saved.fields.name, connection: connection, note: note)
-            try profiles.saveLinked(value, nativeID: saved.id, replacing: localSource)
+            _ = try saveCoordinator.finishNotes(saveReceiptID)
+            recoveryRevision = UUID()
             status = "Contact saved successfully to Apple Contacts and this app."
+            onResult(status)
+            if let id = activeProposalID { onWorkflowEvent(.annotationsSaved(id)) }
             showEditor = false
             Task { await native.load(requestPermission: false) }
         } catch { editorError = ContactSyncError.verifiedWritePendingLocal.localizedDescription }

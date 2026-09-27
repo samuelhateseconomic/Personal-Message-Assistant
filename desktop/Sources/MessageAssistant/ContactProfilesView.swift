@@ -23,6 +23,7 @@ struct ContactProfilesView: View {
     @State private var confirmDiscard = false
     @State private var creating = false
     @State private var pendingCreate = false
+    @State private var deleting = false
     private var selectedNative: ProfileContact? {
         guard let selectedID, selectedID.hasPrefix("mac:") else { return nil }
         return contacts.first { $0.id == selectedID }
@@ -118,6 +119,23 @@ struct ContactProfilesView: View {
             }
             Button("Keep editing", role: .cancel) { pendingSelection = nil; pendingCreate = false }
         }
+        .sheet(isPresented: $deleting) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Delete app-only contact?").font(.title2)
+                    Text(original.name).font(.headline)
+                    Text(original.phone); Text(original.email)
+                    Text("Connection: \(original.connection)")
+                    Text("Note: \(original.note)")
+                    Text("This removes the saved local profile. Apple Contacts is unaffected. Unsaved edits are not included, and this app has no Undo for deletion.")
+                    HStack {
+                        Button("Keep contact") { deleting = false }.keyboardShortcut(.cancelAction)
+                        Spacer()
+                        Button("Delete app-only contact", role: .destructive) { removeLocalContact() }
+                    }
+                }.padding(24)
+            }.frame(width: 520, height: 420)
+        }
     }
     private var feedback: some View {
         Label(status, systemImage: saveFailed ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
@@ -176,6 +194,10 @@ struct ContactProfilesView: View {
                         status = ""; saveFailed = false
                     }.disabled(!creating && !dirty)
                 }
+                if !creating, selectedID?.hasPrefix("local:") == true {
+                    Button("Review deletion of app-only contact…", role: .destructive) { deleting = true }
+                        .disabled(failedToLoad)
+                }
         }
     }
     private func resetNewContact() {
@@ -214,6 +236,18 @@ struct ContactProfilesView: View {
         } catch {
             saveFailed = true
             status = "Save failed. Your entries have been kept. Please try again."
+        }
+    }
+    private func removeLocalContact() {
+        guard let id = selectedID, id.hasPrefix("local:") else { return }
+        do {
+            try store.remove(id, expected: original)
+            profiles.removeValue(forKey: id); deleting = false; selectedID = nil
+            draft = ContactProfile(name: ""); original = draft
+            saveFailed = false; status = "App-only contact deleted successfully."
+        } catch {
+            deleting = false; saveFailed = true
+            status = "Deletion failed. The saved profile may have changed; reopen it and review again."
         }
     }
 }

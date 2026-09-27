@@ -26,7 +26,7 @@ public struct ContactProfile: Codable, Equatable, Sendable {
 
 /// App-only annotations. Never writes to Apple's Contacts database or the repository.
 public struct ContactProfileStore {
-    public enum ValidationError: Error { case emptyName }
+    public enum ValidationError: Error { case emptyName, changed }
     public let url: URL
     public init(url: URL? = nil) {
         self.url = url ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -49,6 +49,12 @@ public struct ContactProfileStore {
         var profiles = try load()
         profiles["mac:" + nativeID] = profile
         if let localID, localID.hasPrefix("local:") { profiles.removeValue(forKey: localID) }
+        try write(profiles)
+    }
+    public func remove(_ id: String, expected: ContactProfile?) throws {
+        var profiles = try load()
+        guard profiles[id] == expected else { throw ValidationError.changed }
+        guard profiles.removeValue(forKey: id) != nil else { return }
         try write(profiles)
     }
     private func write(_ profiles: [String: ContactProfile]) throws {

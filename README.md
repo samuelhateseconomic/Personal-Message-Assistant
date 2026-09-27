@@ -7,21 +7,31 @@ Message delivery still uses Apple's messaging services and, for SMS, your carrie
 
 ## Transformation milestone — from CLI assistant to native Mac app
 
-The native SwiftUI preview now has Assistant, Plan, and Contacts workspaces with system
+The native SwiftUI preview now has Assistant, Plan, Contacts, and Preferences workspaces with system
 unlock, shared native recipients, reviewed Contacts edits, and persistent draft-only plans.
 Plan confirmations save encrypted local records before resetting the form; saved plans can
-be restored after restart and cancelled. The native interface does not yet connect to
-Python/Ollama, Messages history, or delivery. The existing Python assistant remains separate.
+be restored after restart, edited and cancelled. The native Assistant now uses local Gemma 3
+for structured contact and plan proposals, with source-backed native lookup and explicit
+review before writes. A two-step contact-to-plan workflow now carries the verified native
+contact identity into a separately reviewed plan. Python, Messages history and delivery remain separate.
 
 - [Native app build and verification](desktop/README.md)
 - [Transformation roadmap](docs/DESKTOP_TRANSFORMATION_PLAN.md)
 - [V1 specification and backlog](docs/DESKTOP_BUILD_SPEC.md)
+- [Assistant completion plan and current gaps](docs/ASSISTANT_COMPLETION_PLAN.md)
 - [UI refinement plan](docs/UI_REFINEMENT_PLAN.md)
 - [Native storage architecture](docs/NATIVE_STORAGE_DECISION.md)
 - [Acceptance results](docs/ACCEPTANCE_RESULTS.md)
 
-Current preview: **0.4.1 · Search and filters**. Thirty-two native check groups pass using
-synthetic data. The Python suite previously passed 173 tests. Production signing, Keychain
+Current preview: **0.10.0 · Contact save recovery**. Eighty-three native check groups pass using
+synthetic data. Three live context/style drafting scenarios last passed in 0.9.0; the previous
+nine live synthetic Gemma proposal scenarios passed in 0.7.0. Select a contact in Assistant
+and expand “Write a message using selected contact facts” to preview context before inference.
+The new Preferences panel saves an explicitly approved tone, length and emoji style; each
+draft has a separate opt-in to use it. Encrypted contact-save receipts now retain partial
+success across restart; Contacts offers readback and local-note recovery without repeating
+the native save. Full assistant workflow resumption remains pending. The Python suite
+previously passed 173 tests. Production signing, Keychain
 upgrade/recovery behavior, real-account conflict behavior and live UI tests remain pending.
 
 ## Development status — Phase 4 implementation + approved memory

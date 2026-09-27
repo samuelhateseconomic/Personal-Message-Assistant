@@ -87,6 +87,9 @@ public struct NativeContactRow: Identifiable, Equatable, Sendable {
     public let name: String
     public let phones: [String]
     public let emails: [String]
+    public init(id: String, name: String, phones: [String], emails: [String]) {
+        self.id = id; self.name = name; self.phones = phones; self.emails = emails
+    }
 }
 
 @MainActor

@@ -112,6 +112,12 @@ public struct Workspace: Sendable {
         date = Date().addingTimeInterval(3600)
         invalidate()
     }
+    public mutating func loadForEditing(_ snapshot: Review) {
+        guard !isLocked else { return }
+        selectedRecipient = snapshot.recipient
+        message = snapshot.message; date = snapshot.date
+        invalidate()
+    }
     public func review(now: Date = Date()) throws -> Review {
         guard !isLocked else { throw WorkspaceError.locked }
         guard let recipient = reviewRecipient,

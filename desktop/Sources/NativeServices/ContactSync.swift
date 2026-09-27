@@ -1,12 +1,12 @@
 import Foundation
 import Contacts
 
-public struct ContactAccount: Identifiable, Equatable, Sendable {
+public struct ContactAccount: Codable, Identifiable, Equatable, Sendable {
     public let id: String
     public let name: String
     public init(id: String, name: String) { self.id = id; self.name = name }
 }
-public struct ContactFields: Equatable, Sendable {
+public struct ContactFields: Codable, Equatable, Sendable {
     public var givenName = ""
     public var familyName = ""
     public var phones: [String] = []
@@ -15,7 +15,7 @@ public struct ContactFields: Equatable, Sendable {
     public init() {}
     public var name: String { [givenName, familyName].filter { !$0.isEmpty }.joined(separator: " ") }
 }
-public struct ContactSnapshot: Equatable, Sendable {
+public struct ContactSnapshot: Codable, Equatable, Sendable {
     public let id: String
     public let accountID: String
     public var fields: ContactFields
@@ -39,12 +39,13 @@ public enum ContactSyncError: Error, LocalizedError {
         }
     }
 }
-public struct ContactSaveReview: Identifiable, Sendable {
+public struct ContactSaveReview: Identifiable, Equatable, Sendable {
     public let id = UUID()
     public let base: ContactSnapshot?
     public let account: ContactAccount
     public let fields: ContactFields
     public let changedFields: [String]
+    public let expiresAt: Date
 }
 
 /// Serializes this app's saves. External Contacts writers are not locked by this service.
@@ -58,12 +59,14 @@ public struct ContactSaveReview: Identifiable, Sendable {
     private let backend: any ContactSyncBackend
     private let isUnlocked: () -> Bool
     private var attempted = Set<UUID>()
+    private var issued: [UUID: ContactSaveReview] = [:]
     public init(backend: any ContactSyncBackend = SystemContactSyncBackend(), isUnlocked: @escaping () -> Bool) {
         self.backend = backend; self.isUnlocked = isUnlocked
     }
     public func accounts() throws -> [ContactAccount] { try requireUnlocked(); return try backend.accounts() }
     public func fetch(_ id: String) throws -> ContactSnapshot { try requireUnlocked(); return try backend.fetch(id) }
     private func requireUnlocked() throws { guard isUnlocked() else { throw ContactSyncError.locked } }
+    public func invalidate() { issued = [:] }
     public static func differences(_ a: ContactFields, _ b: ContactFields) -> [String] {
         var result: [String] = []
         if a.givenName != b.givenName { result.append("First name") }
@@ -89,28 +92,34 @@ public struct ContactSaveReview: Identifiable, Sendable {
         guard conflicts.isEmpty else { throw ContactSyncError.conflict(conflicts) }
         return result
     }
-    public func review(base: ContactSnapshot?, edited: ContactFields, accountID: String) throws -> ContactSaveReview {
+    public func review(base: ContactSnapshot?, edited: ContactFields, accountID: String, now: Date = Date()) throws -> ContactSaveReview {
         try requireUnlocked()
         guard !edited.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ContactSyncError.invalid }
         let accounts = try backend.accounts()
         guard let account = accounts.first(where: { $0.id == (base?.accountID ?? accountID) }) else { throw ContactSyncError.account }
+        let result: ContactSaveReview
         if let base {
             let fresh = try backend.fetch(base.id)
             guard fresh.accountID == base.accountID else { throw ContactSyncError.changed }
             let merged = try Self.merge(base: base.fields, edited: edited, current: fresh.fields)
-            return ContactSaveReview(base: fresh, account: account, fields: merged, changedFields: Self.differences(fresh.fields, merged))
+            result = ContactSaveReview(base: fresh, account: account, fields: merged, changedFields: Self.differences(fresh.fields, merged), expiresAt: now.addingTimeInterval(120))
+        } else {
+            result = ContactSaveReview(base: nil, account: account, fields: edited, changedFields: Self.differences(ContactFields(), edited), expiresAt: now.addingTimeInterval(120))
         }
-        return ContactSaveReview(base: nil, account: account, fields: edited, changedFields: Self.differences(ContactFields(), edited))
+        issued = issued.filter { $0.value.expiresAt > now }; issued[result.id] = result
+        return result
     }
-    public func commit(_ review: ContactSaveReview) throws -> ContactSnapshot {
+    public func commit(_ review: ContactSaveReview, now: Date = Date()) throws -> ContactSnapshot {
         try requireUnlocked()
         guard !attempted.contains(review.id) else { throw ContactSyncError.uncertain }
+        guard issued[review.id] == review, now < review.expiresAt else { throw ContactSyncError.changed }
         guard try backend.accounts().contains(where: { $0.id == review.account.id }) else { throw ContactSyncError.account }
         if let base = review.base {
             guard try backend.fetch(base.id) == base else { throw ContactSyncError.changed }
         }
         // Once dispatched, never replay this exact operation, even after an ambiguous OS failure.
         attempted.insert(review.id)
+        issued.removeValue(forKey: review.id)
         do {
             let saved: ContactSnapshot
             if let base = review.base {
@@ -160,6 +169,31 @@ public struct ContactSaveReview: Identifiable, Sendable {
         return ContactSnapshot(id: contact.identifier, accountID: containers[0].identifier, fields: fields)
     }
     public func fetch(_ id: String) throws -> ContactSnapshot { try snapshot(raw(id)) }
+    public func deletionTarget(_ id: String) throws -> ContactDeletionTarget {
+        // Limited access cannot distinguish a removed record from a hidden record.
+        guard CNContactStore.authorizationStatus(for: .contacts) == .authorized,
+              let token = store.currentHistoryToken else { throw ContactSyncError.access }
+        let value = try fetch(id)
+        guard store.currentHistoryToken == token else { throw ContactSyncError.changed }
+        return ContactDeletionTarget(snapshot: value, changeToken: token)
+    }
+    public func delete(_ target: ContactDeletionTarget) throws {
+        guard try deletionTarget(target.snapshot.id) == target else { throw ContactSyncError.changed }
+        let contact = try raw(target.snapshot.id)
+        guard try snapshot(contact) == target.snapshot, store.currentHistoryToken == target.changeToken,
+              let mutable = contact.mutableCopy() as? CNMutableContact else { throw ContactSyncError.changed }
+        let request = CNSaveRequest(); request.delete(mutable)
+        try store.execute(request)
+    }
+    public func isAbsent(_ id: String) throws -> Bool {
+        guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else { throw ContactSyncError.access }
+        let request = CNContactFetchRequest(keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])
+        request.unifyResults = false
+        request.predicate = CNContact.predicateForContacts(withIdentifiers: [id])
+        var found = false
+        try store.enumerateContacts(with: request) { contact, _ in if contact.identifier == id { found = true } }
+        return !found
+    }
     private func apply(_ fields: ContactFields, to contact: CNMutableContact, old: ContactFields?) {
         if old?.givenName != fields.givenName { contact.givenName = fields.givenName }
         if old?.familyName != fields.familyName { contact.familyName = fields.familyName }

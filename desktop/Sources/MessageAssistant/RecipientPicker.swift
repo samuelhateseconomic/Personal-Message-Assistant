@@ -8,6 +8,10 @@ struct RecipientPicker: View {
     @Binding var filter: PlanSearch
     @Binding var contactID: String?
     let selected: Recipient?
+    let hasDraft: Bool
+    @State private var showRecipientChange = false
+    @State private var pendingContactID: String?
+    @State private var pendingRecipient: Recipient?
     let choose: (Recipient?) -> Void
     let connect: () -> Void
 
@@ -44,9 +48,8 @@ struct RecipientPicker: View {
                         ForEach(matches) { row in
                             Button {
                                 guard contactID != row.id else { return }
-                                contactID = row.id
                                 let choices = Self.endpoints(row)
-                                choose(choices.count == 1 ? choices[0] : nil)
+                                requestSelection(contact: row.id, recipient: choices.count == 1 ? choices[0] : nil)
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading) {
@@ -71,7 +74,7 @@ struct RecipientPicker: View {
                             .foregroundStyle(.secondary)
                     } else {
                         Picker("Send to", selection: Binding(get: { selected?.id ?? "" }, set: { id in
-                            choose(endpoints.first { $0.id == id })
+                            requestSelection(contact: current.id, recipient: endpoints.first { $0.id == id })
                         })) {
                             Text("Choose a number or email").tag("")
                             ForEach(endpoints) { Text("\($0.kind == .phone ? "Phone" : "Email"): \($0.address)").tag($0.id) }
@@ -84,8 +87,23 @@ struct RecipientPicker: View {
             } else {
                 Text(contacts.status).font(.caption).foregroundStyle(.secondary)
             }
-            Text("Assistant and Plan share this recipient. Changing the contact or destination clears the previous draft and approval.")
+            Text("Assistant and Plan share this recipient. You will be asked before a recipient change discards a typed draft.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+        .confirmationDialog("Change recipient and discard the current draft?", isPresented: $showRecipientChange) {
+            Button("Keep current draft", role: .cancel) { pendingContactID = nil; pendingRecipient = nil }
+            Button("Change recipient", role: .destructive) {
+                contactID = pendingContactID; choose(pendingRecipient)
+                pendingContactID = nil; pendingRecipient = nil
+            }
+        } message: {
+            Text("The current message will be cleared. Previously saved plans will not change.")
+        }
+    }
+    private func requestSelection(contact: String, recipient: Recipient?) {
+        guard contact != contactID || recipient != selected else { return }
+        if hasDraft {
+            pendingContactID = contact; pendingRecipient = recipient; showRecipientChange = true
+        } else { contactID = contact; choose(recipient) }
     }
 }

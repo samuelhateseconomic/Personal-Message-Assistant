@@ -76,4 +76,22 @@ import NativeServices
     let linked = try store.load()
     check(linked[local] == nil && linked["mac:native-test"] == profile, "Moving to native must retain private annotations and remove duplicate local profile")
     print("PASS app-only profile links to native identity without losing annotations")
+    let expiryBackend = FakeContactBackend()
+    let expiryService = ContactSyncService(backend: expiryBackend, isUnlocked: { true })
+    let expiring = try expiryService.review(base: nil, edited: edited, accountID: "test-account")
+    do { _ = try expiryService.commit(expiring, now: expiring.expiresAt); fatalError("Expired save accepted") } catch ContactSyncError.changed { }
+    let foreign = ContactSyncService(backend: expiryBackend, isUnlocked: { true })
+    do { _ = try foreign.commit(expiring); fatalError("Foreign save review accepted") } catch ContactSyncError.changed { }
+    expiryService.invalidate()
+    do { _ = try expiryService.commit(expiring); fatalError("Revoked save accepted") } catch ContactSyncError.changed { }
+    check(expiryBackend.writes == 0, "Invalid save review caused writes")
+    print("PASS expired, foreign and revoked contact-save reviews reject without writes")
+
+    let removable = try store.create(profile)
+    var changed = profile; changed.note = "Changed synthetic note"
+    try store.save(changed, for: removable)
+    do { try store.remove(removable, expected: profile); fatalError("Stale profile deletion accepted") } catch ContactProfileStore.ValidationError.changed { }
+    try store.remove(removable, expected: changed)
+    check(try store.load()[removable] == nil && store.load()["mac:native-test"] == profile, "Local removal must preserve unrelated profiles")
+    print("PASS reviewed app-only deletion rejects stale data and preserves other profiles")
 }

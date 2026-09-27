@@ -1,5 +1,11 @@
 # Desktop build specification — revision 2
 
+> Scope update (2026-09-26): [Assistant completion plan](ASSISTANT_COMPLETION_PLAN.md)
+> supersedes this document's draft-only Assistant scope and deferral of native contact
+> deletion. It adds conversational planning, reviewed contact CRUD, sourced retrieval and
+> stored-plan editing. These are planned capabilities, not implemented claims. Other
+> authority, privacy and delivery gates remain in effect.
+
 Status: proposed implementation baseline, 2026-09-24. Supplements and takes precedence
 over the broad roadmap in DESKTOP_TRANSFORMATION_PLAN.md where scope/order differs.
 No real contact, authentication, delivery, or background service changes are made by
